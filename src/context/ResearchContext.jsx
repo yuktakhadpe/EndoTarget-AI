@@ -122,22 +122,10 @@ useEffect(() => {
     };
   }, [user?.id, user?.isLoggedIn]);
 
-  // User workspace saved items - isolated per authenticated user ID
-  const [savedTargetIds, setSavedTargetIds] = useState(() => {
-    const activeUserId = getActiveSessionUserId();
-    return activeUserId ? (getUserData(activeUserId).savedTargetIds || []) : [];
-  });
-
-  const [savedPaperIds, setSavedPaperIds] = useState(() => {
-    const activeUserId = getActiveSessionUserId();
-    return activeUserId ? (getUserData(activeUserId).savedPaperIds || []) : [];
-  });
-
-  // User research notes - isolated per authenticated user ID
-  const [notes, setNotes] = useState(() => {
-    const activeUserId = getActiveSessionUserId();
-    return activeUserId ? (getUserData(activeUserId).notes || []) : [];
-  });
+  // User workspace data - initialized after Supabase authentication
+const [savedTargetIds, setSavedTargetIds] = useState([]);
+const [savedPaperIds, setSavedPaperIds] = useState([]);
+const [notes, setNotes] = useState([]);
 
   // Automatically persist user-specific data whenever it changes
   useEffect(() => {
