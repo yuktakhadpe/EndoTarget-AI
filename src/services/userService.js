@@ -5,6 +5,7 @@
  *
  * Backed by browser localStorage with isolated per-user keys.
  */
+import { supabase } from './supabaseClient';
 
 const USERS_STORAGE_KEY = 'endotarget_users';
 const ACTIVE_SESSION_KEY = 'endotarget_active_session';
@@ -285,3 +286,69 @@ export function saveUserData(userId, data) {
   }
 }
 
+// ==========================================
+// SUPABASE AUTHENTICATION
+// ==========================================
+
+export async function signUpWithSupabase({ name, email, password, role }) {
+  if (!supabase) {
+    throw new Error('Supabase is not configured.');
+  }
+
+  const trimmedName = name.trim();
+  const trimmedEmail = email.trim().toLowerCase();
+
+  if (!trimmedName || !trimmedEmail || !password) {
+    throw new Error('Please provide all required registration details.');
+  }
+
+  const { data, error } = await supabase.auth.signUp({
+    email: trimmedEmail,
+    password,
+    options: {
+      data: {
+        name: trimmedName,
+        role: role || USER_ROLES[4],
+      },
+    },
+  });
+
+  if (error) throw error;
+
+  return data;
+}
+
+export async function signInWithSupabase({ email, password }) {
+  if (!supabase) {
+    throw new Error('Supabase is not configured.');
+  }
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email.trim().toLowerCase(),
+    password,
+  });
+
+  if (error) throw error;
+
+  return data;
+}
+
+export async function signOutFromSupabase() {
+  if (!supabase) {
+    throw new Error('Supabase is not configured.');
+  }
+
+  const { error } = await supabase.auth.signOut();
+
+  if (error) throw error;
+}
+
+export async function getSupabaseSession() {
+  if (!supabase) return null;
+
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error) throw error;
+
+  return data.session;
+}

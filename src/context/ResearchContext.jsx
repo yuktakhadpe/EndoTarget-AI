@@ -1,15 +1,14 @@
 import React, { createContext, useContext, useState, useMemo, useEffect, useCallback } from 'react';
 import { INITIAL_TARGETS, INITIAL_WEIGHTS, calculateTargetScore } from '../data/targetsData';
+import { supabase } from '../services/supabaseClient';
 import { INITIAL_PAPERS } from '../data/papersData';
 import {
-  getUserById,
   getUserData,
   saveUserData,
-  getActiveSessionUserId,
-  authenticateUser,
-  registerUser,
-  clearActiveSession,
-  ELENA_VANCE_ID,
+  signUpWithSupabase,
+  signInWithSupabase,
+  signOutFromSupabase,
+  getSupabaseSession,
 } from '../services/userService';
 import {
   fetchUserPapers,
@@ -23,22 +22,71 @@ const ResearchContext = createContext(null);
 
 export function ResearchProvider({ children }) {
   // Authentication state - retrieved from persistent session
-  const [user, setUser] = useState(() => {
-    const activeUserId = getActiveSessionUserId();
-    if (activeUserId) {
-      const existing = getUserById(activeUserId);
-      if (existing) {
-        return { ...existing, isLoggedIn: true };
+  // Authentication state - restored from Supabase session
+const [user, setUser] = useState({ isLoggedIn: false });
+const [authLoading, setAuthLoading] = useState(true);
+
+// Restore and monitor Supabase authentication session
+useEffect(() => {
+  let mounted = true;
+
+  const restoreSession = async () => {
+    try {
+      const session = await getSupabaseSession();
+
+      if (!mounted) return;
+
+      if (session?.user) {
+        const authUser = session.user;
+
+        setUser({
+          id: authUser.id,
+          name: authUser.user_metadata?.name || authUser.email,
+          email: authUser.email,
+          role: authUser.user_metadata?.role || 'Research Scientist',
+          isLoggedIn: true,
+        });
+
+        setCurrentPage('dashboard');
       }
+    } catch (error) {
+      console.error('Session restoration failed:', error);
+    } finally {
+      if (mounted) setAuthLoading(false);
     }
-    return { isLoggedIn: false };
+  };
+
+  restoreSession();
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((event, session) => {
+    if (!mounted) return;
+
+    if (session?.user) {
+      const authUser = session.user;
+
+      setUser({
+        id: authUser.id,
+        name: authUser.user_metadata?.name || authUser.email,
+        email: authUser.email,
+        role: authUser.user_metadata?.role || 'Research Scientist',
+        isLoggedIn: true,
+      });
+    } else if (event === 'SIGNED_OUT') {
+      setUser({ isLoggedIn: false });
+      setCurrentPage('landing');
+    }
   });
 
+  return () => {
+    mounted = false;
+    subscription.unsubscribe();
+  };
+}, []);
+
   // Current active page: 'landing' | 'login' | 'dashboard' | 'library' | 'discovery' | 'ranking' | 'pathway' | 'workspace' | 'resources'
-  const [currentPage, setCurrentPage] = useState(() => {
-    const activeUserId = getActiveSessionUserId();
-    return activeUserId ? 'dashboard' : 'landing';
-  });
+  const [currentPage, setCurrentPage] = useState('landing');
 
   // Bio Resources Hub navigation & search state
   const [activeResourceTab, setActiveResourceTab] = useState('geo');
