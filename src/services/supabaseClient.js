@@ -294,7 +294,13 @@ export const db = {
         calculated_score: t.calculatedScore || 75.0,
         paper_id: t.paperId || null,
       }));
-      await supabase.from('identified_targets').insert(records);
+      const { error } = await supabase
+  .from('identified_targets')
+  .insert(records);
+
+if (error) {
+  throw error;
+}
       return;
     }
 
