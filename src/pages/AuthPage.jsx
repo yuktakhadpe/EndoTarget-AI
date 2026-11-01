@@ -108,10 +108,10 @@ export function AuthPage() {
               Explore all platform features preloaded with scientific literature and target dossiers.
             </p>
             <button
-              type="button"
-              onClick={handleInstantDemoLogin}
-              className="mt-1 w-full py-2 px-3 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2"
-            >
+  type="button"
+  disabled
+  className="mt-1 w-full py-2 px-3 bg-slate-400 text-white rounded-lg text-xs font-bold cursor-not-allowed flex items-center justify-center gap-2"
+>
               <span>Instant Access as Dr. Elena Vance</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>

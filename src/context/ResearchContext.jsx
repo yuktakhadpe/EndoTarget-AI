@@ -318,55 +318,102 @@ useEffect(() => {
   };
 
   const login = async (credentials) => {
-    try {
-      const { user: authUser, userData } = authenticateUser(credentials.email, credentials.password);
-      setUser({ ...authUser, isLoggedIn: true });
-      setSavedTargetIds(userData.savedTargetIds || []);
-      setSavedPaperIds(userData.savedPaperIds || []);
-      setNotes(userData.notes || []);
-      
-      const userPapers = await fetchUserPapers(authUser.id);
-      setPapers(userPapers || []);
+      try {
+        const { user: authUser } = await signInWithSupabase(credentials);
+    
+        if (!authUser) {
+          throw new Error('Login failed. Please try again.');
+        }
+    
+        const profile = {
+          id: authUser.id,
+          name: authUser.user_metadata?.name || authUser.email,
+          email: authUser.email,
+          role: authUser.user_metadata?.role || 'Research Scientist',
+          isLoggedIn: true,
+        };
+    
+        setUser(profile);
+    
+        const userData = getUserData(authUser.id);
+        setSavedTargetIds(userData.savedTargetIds || []);
+        setSavedPaperIds(userData.savedPaperIds || []);
+        setNotes(userData.notes || []);
+    
+        const userPapers = await fetchUserPapers(authUser.id);
+        setPapers(userPapers || []);
+    
+        setCurrentPage('dashboard');
+        showNotification(`Welcome back, ${profile.name}!`, 'success');
+    
+        return { success: true, user: profile };
+      } catch (err) {
+        showNotification(err.message, 'warning');
+        return { success: false, error: err.message };
+      }
+    };
 
-      setCurrentPage('dashboard');
-      showNotification(`Welcome back, ${authUser.name}!`, "success");
-      return { success: true, user: authUser };
-    } catch (err) {
-      showNotification(err.message, "warning");
-      return { success: false, error: err.message };
-    }
-  };
+    const register = async (registrationData) => {
+      try {
+        const { user: authUser, session } =
+          await signUpWithSupabase(registrationData);
+    
+        if (!authUser) {
+          throw new Error('Registration failed. Please try again.');
+        }
+    
+        const profile = {
+          id: authUser.id,
+          name: authUser.user_metadata?.name || registrationData.name,
+          email: authUser.email,
+          role: authUser.user_metadata?.role || registrationData.role,
+          isLoggedIn: Boolean(session),
+        };
+    
+        if (session) {
+          setUser(profile);
+    
+          setSavedTargetIds([]);
+          setSavedPaperIds([]);
+          setNotes([]);
+          setPapers([]);
+    
+          setCurrentPage('dashboard');
+    
+          showNotification(
+            `Account created successfully! Welcome, ${profile.name}.`,
+            'success'
+          );
+        } else {
+          showNotification(
+            'Account created! Please verify your email before signing in.',
+            'success'
+          );
+        }
+    
+        return { success: true, user: profile };
+      } catch (err) {
+        showNotification(err.message, 'warning');
+        return { success: false, error: err.message };
+      }
+    };
 
-  const register = async (registrationData) => {
-    try {
-      const { user: newUser, userData } = registerUser(registrationData);
-      setUser({ ...newUser, isLoggedIn: true });
-      setSavedTargetIds(userData.savedTargetIds || []);
-      setSavedPaperIds(userData.savedPaperIds || []);
-      setNotes(userData.notes || []);
-
-      const userPapers = await fetchUserPapers(newUser.id);
-      setPapers(userPapers || []);
-
-      setCurrentPage('dashboard');
-      showNotification(`Account created successfully! Welcome, ${newUser.name}.`, "success");
-      return { success: true, user: newUser };
-    } catch (err) {
-      showNotification(err.message, "warning");
-      return { success: false, error: err.message };
-    }
-  };
-
-  const logout = () => {
-    clearActiveSession();
-    setUser({ isLoggedIn: false });
-    setSavedTargetIds([]);
-    setSavedPaperIds([]);
-    setNotes([]);
-    setPapers([]);
-    setCurrentPage('landing');
-    showNotification("You have signed out.", "info");
-  };
+    const logout = async () => {
+      try {
+        await signOutFromSupabase();
+    
+        setUser({ isLoggedIn: false });
+        setSavedTargetIds([]);
+        setSavedPaperIds([]);
+        setNotes([]);
+        setPapers([]);
+        setCurrentPage('landing');
+    
+        showNotification('You have signed out.', 'info');
+      } catch (err) {
+        showNotification(err.message, 'warning');
+      }
+    };
 
   return (
     <ResearchContext.Provider

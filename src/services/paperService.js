@@ -11,6 +11,11 @@ import { resolvePaperUrl } from './urlPaperResolver.js';
 import { INITIAL_PAPERS } from '../data/papersData.js';
 import { ELENA_VANCE_ID } from './userService.js';
 
+// Generate UUIDs compatible with PostgreSQL UUID columns
+function generateUUID() {
+  return crypto.randomUUID();
+}
+
 // Biomedical target dictionary for entity recognition (NER)
 const BIOMEDICAL_ENTITIES = [
   { gene: 'ESR2', protein: 'Estrogen Receptor Beta', pathway: 'Steroid Hormone Signaling', role: 'Promotes progesterone resistance and lesion proliferation' },
@@ -126,7 +131,7 @@ export async function uploadPdfPaper(userId, file, customMetadata = {}) {
   const fileUrl = await db.uploadFile(userId, file);
 
   const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
-  const paperId = `paper-${Date.now()}`;
+  const paperId = generateUUID();
   const title = customMetadata.title || cleanName;
   const abstract = customMetadata.abstractText ||
     `Extracted biomedical text from uploaded PDF document "${file.name}". Detailed analysis of cellular phenotypes, inflammatory cytokine signaling, and therapeutic target prioritization in human endometriosis cohorts.`;
@@ -158,7 +163,7 @@ export async function uploadPdfPaper(userId, file, customMetadata = {}) {
 
   // 5. Save analysis to database
   const analysisRecord = {
-    id: `analysis-${paperId}`,
+    id: generateUUID(),
     paper_id: paperId,
     user_id: userId,
     analysis_scope: 'Full Text',
@@ -187,7 +192,7 @@ export async function importPaperFromUrl(userId, urlStr, customMetadata = {}) {
   // 1. Resolve URL metadata from NCBI, CrossRef, or Europe PMC
   const resolved = await resolvePaperUrl(urlStr);
 
-  const paperId = `paper-${Date.now()}`;
+  const paperId = generateUUID();
   const title = customMetadata.title || resolved.title;
   const abstract = customMetadata.abstract || resolved.abstract;
   const analysisScope = customMetadata.analysisScope || resolved.analysisScope || 'Abstract Only';
@@ -219,7 +224,7 @@ export async function importPaperFromUrl(userId, urlStr, customMetadata = {}) {
 
   // 5. Save analysis in database
   const analysisRecord = {
-    id: `analysis-${paperId}`,
+    id: generateUUID(),
     paper_id: paperId,
     user_id: userId,
     analysis_scope: analysisScope,
