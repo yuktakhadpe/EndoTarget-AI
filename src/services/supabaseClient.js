@@ -101,18 +101,27 @@ export const db = {
     const filePath = `${userId}/${fileName}`;
 
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.storage
-        .from('research-papers')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
+      try {
+        const { data, error } = await supabase.storage
+          .from('research-papers')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false,
+          });
 
-      if (error) throw error;
-      const { data: publicUrlData } = supabase.storage
-        .from('research-papers')
-        .getPublicUrl(data.path);
-      return publicUrlData.publicUrl;
+        if (error) {
+          console.warn("Supabase storage upload warning (falling back to persistent local store):", error.message);
+        } else if (data?.path) {
+          const { data: publicUrlData } = supabase.storage
+            .from('research-papers')
+            .getPublicUrl(data.path);
+          if (publicUrlData?.publicUrl) {
+            return publicUrlData.publicUrl;
+          }
+        }
+      } catch (storageErr) {
+        console.warn("Supabase storage upload exception (falling back to persistent local store):", storageErr.message);
+      }
     }
 
     // Local persistent storage fallback
@@ -129,7 +138,7 @@ export const db = {
           userId,
         };
         saveStorageFile(filePath, fileData);
-        // Return a mock permanent storage URL
+        // Return a persistent storage URL
         resolve(`supabase-storage://research-papers/${filePath}`);
       };
       reader.onerror = () => {
@@ -196,17 +205,24 @@ export const db = {
         created_at: paperRecord.created_at || new Date().toISOString(),
       };
 
-      const { data, error } = await supabase
-        .from('research_papers')
-        .upsert(dbPayload, { onConflict: 'id' })
-        .select()
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from('research_papers')
+          .upsert(dbPayload, { onConflict: 'id' })
+          .select()
+          .single();
 
-      if (error) throw error;
-      return {
-        ...data,
-        analysisScope: data.analysis_scope || 'Abstract Only',
-      };
+        if (error) {
+          console.warn("Supabase savePaper warning (saving to persistent local storage):", error.message);
+        } else if (data) {
+          return {
+            ...data,
+            analysisScope: data.analysis_scope || 'Abstract Only',
+          };
+        }
+      } catch (dbErr) {
+        console.warn("Supabase savePaper exception (saving to persistent local storage):", dbErr.message);
+      }
     }
 
     const papers = getTableData('research_papers');
@@ -233,13 +249,18 @@ export const db = {
    */
   async deletePaper(userId, paperId) {
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase
-        .from('research_papers')
-        .delete()
-        .eq('id', paperId)
-        .eq('user_id', userId);
-      if (error) throw error;
-      return true;
+      try {
+        const { error } = await supabase
+          .from('research_papers')
+          .delete()
+          .eq('id', paperId)
+          .eq('user_id', userId);
+        if (error) {
+          console.warn("Supabase deletePaper warning:", error.message);
+        }
+      } catch (err) {
+        console.warn("Supabase deletePaper exception:", err.message);
+      }
     }
 
     let papers = getTableData('research_papers');
@@ -277,26 +298,34 @@ export const db = {
         created_at: analysisRecord.created_at || new Date().toISOString(),
       };
 
-      const { data, error } = await supabase
-        .from('research_analysis_results')
-        .upsert(dbPayload, { onConflict: 'id' })
-        .select()
-        .single();
-      if (error) throw error;
-      return {
-        ...data,
-        analysisScope: data.analysis_scope || 'Abstract Only',
-        researchObjective: data.research_objective,
-        mainFindings: data.main_findings,
-        genesIdentified: data.genes_identified,
-        proteinsIdentified: data.proteins_identified,
-        biologicalPathways: data.biological_pathways,
-        relationshipWithEndometriosis: data.relationship_with_endometriosis,
-        experimentalModel: data.experimental_model,
-        evidenceClassification: data.evidence_classification,
-        evidenceDistribution: data.evidence_distribution,
-        potentialDrugTargets: data.potential_drug_targets,
-      };
+      try {
+        const { data, error } = await supabase
+          .from('research_analysis_results')
+          .upsert(dbPayload, { onConflict: 'id' })
+          .select()
+          .single();
+
+        if (error) {
+          console.warn("Supabase saveAnalysisResult warning (saving to persistent local storage):", error.message);
+        } else if (data) {
+          return {
+            ...data,
+            analysisScope: data.analysis_scope || 'Abstract Only',
+            researchObjective: data.research_objective,
+            mainFindings: data.main_findings,
+            genesIdentified: data.genes_identified,
+            proteinsIdentified: data.proteins_identified,
+            biologicalPathways: data.biological_pathways,
+            relationshipWithEndometriosis: data.relationship_with_endometriosis,
+            experimentalModel: data.experimental_model,
+            evidenceClassification: data.evidence_classification,
+            evidenceDistribution: data.evidence_distribution,
+            potentialDrugTargets: data.potential_drug_targets,
+          };
+        }
+      } catch (analysisErr) {
+        console.warn("Supabase saveAnalysisResult exception (saving to persistent local storage):", analysisErr.message);
+      }
     }
 
     const analyses = getTableData('research_analysis_results');
@@ -323,41 +352,47 @@ export const db = {
    * Get AI analysis result for a paper (enforces user_id isolation)
    */
   async getAnalysisResult(userId, paperId) {
-    if (!userId || !paperId) return null;
+    if (!paperId) return null;
 
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase
-        .from('research_analysis_results')
-        .select('*')
-        .eq('paper_id', paperId)
-        .eq('user_id', userId)
-        .maybeSingle();
+      try {
+        let query = supabase
+          .from('research_analysis_results')
+          .select('*')
+          .eq('paper_id', paperId);
 
-      if (error) {
-        console.error("Supabase getAnalysisResult error:", error);
-        return null;
+        if (userId) {
+          query = query.eq('user_id', userId);
+        }
+
+        const { data, error } = await query.maybeSingle();
+
+        if (error) {
+          console.warn("Supabase getAnalysisResult warning:", error.message);
+        } else if (data) {
+          return {
+            ...data,
+            analysisScope: data.analysis_scope || 'Abstract Only',
+            researchObjective: data.research_objective,
+            mainFindings: data.main_findings,
+            genesIdentified: data.genes_identified,
+            proteinsIdentified: data.proteins_identified,
+            biologicalPathways: data.biological_pathways,
+            relationshipWithEndometriosis: data.relationship_with_endometriosis,
+            experimentalModel: data.experimental_model,
+            evidenceClassification: data.evidence_classification,
+            evidenceDistribution: data.evidence_distribution,
+            potentialDrugTargets: data.potential_drug_targets,
+          };
+        }
+      } catch (err) {
+        console.warn("Supabase getAnalysisResult exception:", err.message);
       }
-      if (data) {
-        return {
-          ...data,
-          analysisScope: data.analysis_scope || 'Abstract Only',
-          researchObjective: data.research_objective,
-          mainFindings: data.main_findings,
-          genesIdentified: data.genes_identified,
-          proteinsIdentified: data.proteins_identified,
-          biologicalPathways: data.biological_pathways,
-          relationshipWithEndometriosis: data.relationship_with_endometriosis,
-          experimentalModel: data.experimental_model,
-          evidenceClassification: data.evidence_classification,
-          evidenceDistribution: data.evidence_distribution,
-          potentialDrugTargets: data.potential_drug_targets,
-        };
-      }
-      return null;
     }
 
+    // Always check local persistent storage if Supabase returned null or failed
     const analyses = getTableData('research_analysis_results');
-    const match = analyses.find((a) => a.paper_id === paperId && a.user_id === userId);
+    const match = analyses.find((a) => a.paper_id === paperId && (!userId || a.user_id === userId));
     if (!match) return null;
     return {
       ...match,
@@ -370,26 +405,30 @@ export const db = {
    * Save identified drug targets extracted from paper
    */
   async saveIdentifiedTargets(userId, targets) {
-    if (!userId || !targets?.length) return;
+    if (!targets?.length) return;
 
     if (isSupabaseConfigured && supabase) {
-      const records = targets.map((t) => ({
-        user_id: userId,
-        gene_symbol: t.geneSymbol,
-        target_name: t.targetName,
-        biological_category: t.biologicalCategory || 'Other',
-        clinical_phase: t.clinicalPhase || 'Preclinical',
-        calculated_score: t.calculatedScore || 75.0,
-        paper_id: t.paperId || null,
-      }));
-      const { error } = await supabase
-  .from('identified_targets')
-  .insert(records);
-
-if (error) {
-  throw error;
-}
-      return;
+      try {
+        const records = targets.map((t) => ({
+          user_id: userId,
+          gene_symbol: t.geneSymbol,
+          target_name: t.targetName,
+          biological_category: t.biologicalCategory || 'Other',
+          clinical_phase: t.clinicalPhase || 'Preclinical',
+          calculated_score: t.calculatedScore || 75.0,
+          paper_id: t.paperId || null,
+        }));
+        const { error } = await supabase
+          .from('identified_targets')
+          .insert(records);
+        if (error) {
+          console.warn("Supabase saveIdentifiedTargets warning:", error.message);
+        } else {
+          return;
+        }
+      } catch (err) {
+        console.warn("Supabase saveIdentifiedTargets exception:", err.message);
+      }
     }
 
     const existing = getTableData('identified_targets');

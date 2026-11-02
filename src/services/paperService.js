@@ -156,6 +156,7 @@ export async function uploadPdfPaper(userId, file, customMetadata = {}) {
     status: 'completed',
     abstract,
     sample_size: customMetadata.sampleSize || 'Primary human patient tissue biopsies and stromal cell assays',
+    extractedData: extractedAnalysis,
     created_at: new Date().toISOString(),
   };
 
@@ -218,6 +219,7 @@ export async function importPaperFromUrl(userId, urlStr, customMetadata = {}) {
     status: 'completed',
     abstract,
     sample_size: customMetadata.sampleSize || 'Clinical patient cohort & literature consensus dataset',
+    extractedData: extractedAnalysis,
     created_at: new Date().toISOString(),
   };
 
@@ -249,27 +251,56 @@ export async function importPaperFromUrl(userId, urlStr, customMetadata = {}) {
 
 /**
  * Fetch paper analysis result from database (loads instantly without re-running)
+ * If not present in database, dynamically runs BioNER analysis and caches it.
  */
-export async function getPaperAnalysis(userId, paperId) {
-  if (!userId || !paperId) return null;
+export async function getPaperAnalysis(userId, paperId, paperFallback = null) {
+  if (!paperId) return null;
 
-  // Check persistent database first
+  // 1. Check persistent database (Supabase and local persistent store)
   const existing = await db.getAnalysisResult(userId, paperId);
   if (existing) {
     return existing;
   }
 
-  // Check INITIAL_PAPERS for preloaded reference data (e.g. for Dr. Elena Vance)
+  // 2. Check if paperFallback has extractedData
+  if (paperFallback?.extractedData) {
+    return paperFallback.extractedData;
+  }
+
+  // 3. Check INITIAL_PAPERS for preloaded reference data (e.g. for Dr. Elena Vance)
   const initial = INITIAL_PAPERS.find((p) => p.id === paperId);
   if (initial?.extractedData) {
     const analysisRecord = {
       id: `analysis-${paperId}`,
       paper_id: paperId,
-      user_id: userId,
+      user_id: userId || ELENA_VANCE_ID,
+      analysis_scope: initial.extractedData.analysisScope || 'Abstract Only',
+      analysisScope: initial.extractedData.analysisScope || 'Abstract Only',
       ...initial.extractedData,
       created_at: new Date().toISOString(),
     };
-    await db.saveAnalysisResult(analysisRecord);
+    db.saveAnalysisResult(analysisRecord).catch(() => {});
+    return analysisRecord;
+  }
+
+  // 4. If paperFallback has title or abstract, run BioNER on-the-fly and cache it
+  if (paperFallback && (paperFallback.title || paperFallback.abstract)) {
+    const scope = paperFallback.analysis_scope || paperFallback.analysisScope || 'Abstract Only';
+    const extracted = extractBiomedicalEntities(
+      paperFallback.title || 'Biomedical Investigation',
+      paperFallback.abstract || '',
+      scope
+    );
+    const analysisRecord = {
+      id: generateUUID(),
+      paper_id: paperId,
+      user_id: userId || ELENA_VANCE_ID,
+      analysis_scope: scope,
+      analysisScope: scope,
+      ...extracted,
+      created_at: new Date().toISOString(),
+    };
+    db.saveAnalysisResult(analysisRecord).catch(() => {});
     return analysisRecord;
   }
 
