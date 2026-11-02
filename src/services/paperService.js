@@ -81,6 +81,7 @@ export function extractBiomedicalEntities(title, abstract = '', scope = 'Abstrac
       : { humanClinical: 20, humanTissue: 30, animalInVivo: 25, inVitro: 25 },
     potentialDrugTargets,
     analysisScope: scope,
+    analysis_scope: scope,
   };
 }
 
@@ -167,6 +168,7 @@ export async function uploadPdfPaper(userId, file, customMetadata = {}) {
     paper_id: paperId,
     user_id: userId,
     analysis_scope: 'Full Text',
+    analysisScope: 'Full Text',
     ...extractedAnalysis,
     created_at: new Date().toISOString(),
   };
@@ -228,6 +230,7 @@ export async function importPaperFromUrl(userId, urlStr, customMetadata = {}) {
     paper_id: paperId,
     user_id: userId,
     analysis_scope: analysisScope,
+    analysisScope: analysisScope,
     ...extractedAnalysis,
     created_at: new Date().toISOString(),
   };

@@ -156,13 +156,20 @@ export const db = {
         console.error("Supabase getPapers error:", error);
         return [];
       }
-      return data || [];
+      return (data || []).map((p) => ({
+        ...p,
+        analysisScope: p.analysis_scope || p.analysisScope || 'Abstract Only',
+      }));
     }
 
     const papers = getTableData('research_papers');
     return papers
       .filter((p) => p.user_id === userId)
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .map((p) => ({
+        ...p,
+        analysisScope: p.analysis_scope || p.analysisScope || 'Abstract Only',
+      }));
   },
 
   /**
@@ -170,20 +177,44 @@ export const db = {
    */
   async savePaper(paperRecord) {
     if (isSupabaseConfigured && supabase) {
+      // Map to exact database schema columns (snake_case)
+      const dbPayload = {
+        id: paperRecord.id,
+        user_id: paperRecord.user_id,
+        title: paperRecord.title,
+        authors: paperRecord.authors || 'Unknown Authors',
+        journal: paperRecord.journal || 'Biomedical Literature',
+        year: paperRecord.year || new Date().getFullYear(),
+        doi: paperRecord.doi || null,
+        pmid: paperRecord.pmid || null,
+        file_url: paperRecord.file_url || null,
+        source_type: paperRecord.source_type || 'pdf',
+        analysis_scope: paperRecord.analysis_scope || paperRecord.analysisScope || 'Abstract Only',
+        status: paperRecord.status || 'completed',
+        sample_size: paperRecord.sample_size || paperRecord.sampleSize || null,
+        abstract: paperRecord.abstract || null,
+        created_at: paperRecord.created_at || new Date().toISOString(),
+      };
+
       const { data, error } = await supabase
         .from('research_papers')
-        .upsert(paperRecord, { onConflict: 'id' })
+        .upsert(dbPayload, { onConflict: 'id' })
         .select()
         .single();
 
       if (error) throw error;
-      return data;
+      return {
+        ...data,
+        analysisScope: data.analysis_scope || 'Abstract Only',
+      };
     }
 
     const papers = getTableData('research_papers');
     const existingIndex = papers.findIndex((p) => p.id === paperRecord.id);
     const updated = {
       ...paperRecord,
+      analysis_scope: paperRecord.analysis_scope || paperRecord.analysisScope || 'Abstract Only',
+      analysisScope: paperRecord.analysisScope || paperRecord.analysis_scope || 'Abstract Only',
       updated_at: new Date().toISOString(),
       created_at: paperRecord.created_at || new Date().toISOString(),
     };
@@ -226,13 +257,46 @@ export const db = {
    */
   async saveAnalysisResult(analysisRecord) {
     if (isSupabaseConfigured && supabase) {
+      // Map frontend model to exact database schema columns (snake_case)
+      // Excludes camelCase `analysisScope` to avoid PostgREST schema cache errors
+      const dbPayload = {
+        id: analysisRecord.id,
+        paper_id: analysisRecord.paper_id,
+        user_id: analysisRecord.user_id,
+        analysis_scope: analysisRecord.analysis_scope || analysisRecord.analysisScope || 'Abstract Only',
+        research_objective: analysisRecord.research_objective || analysisRecord.researchObjective || null,
+        main_findings: analysisRecord.main_findings || analysisRecord.mainFindings || null,
+        genes_identified: analysisRecord.genes_identified || analysisRecord.genesIdentified || [],
+        proteins_identified: analysisRecord.proteins_identified || analysisRecord.proteinsIdentified || [],
+        biological_pathways: analysisRecord.biological_pathways || analysisRecord.biologicalPathways || [],
+        relationship_with_endometriosis: analysisRecord.relationship_with_endometriosis || analysisRecord.relationshipWithEndometriosis || null,
+        experimental_model: analysisRecord.experimental_model || analysisRecord.experimentalModel || null,
+        evidence_classification: analysisRecord.evidence_classification || analysisRecord.evidenceClassification || {},
+        evidence_distribution: analysisRecord.evidence_distribution || analysisRecord.evidenceDistribution || {},
+        potential_drug_targets: analysisRecord.potential_drug_targets || analysisRecord.potentialDrugTargets || [],
+        created_at: analysisRecord.created_at || new Date().toISOString(),
+      };
+
       const { data, error } = await supabase
         .from('research_analysis_results')
-        .upsert(analysisRecord, { onConflict: 'id' })
+        .upsert(dbPayload, { onConflict: 'id' })
         .select()
         .single();
       if (error) throw error;
-      return data;
+      return {
+        ...data,
+        analysisScope: data.analysis_scope || 'Abstract Only',
+        researchObjective: data.research_objective,
+        mainFindings: data.main_findings,
+        genesIdentified: data.genes_identified,
+        proteinsIdentified: data.proteins_identified,
+        biologicalPathways: data.biological_pathways,
+        relationshipWithEndometriosis: data.relationship_with_endometriosis,
+        experimentalModel: data.experimental_model,
+        evidenceClassification: data.evidence_classification,
+        evidenceDistribution: data.evidence_distribution,
+        potentialDrugTargets: data.potential_drug_targets,
+      };
     }
 
     const analyses = getTableData('research_analysis_results');
@@ -241,6 +305,8 @@ export const db = {
     );
     const updated = {
       ...analysisRecord,
+      analysis_scope: analysisRecord.analysis_scope || analysisRecord.analysisScope || 'Abstract Only',
+      analysisScope: analysisRecord.analysisScope || analysisRecord.analysis_scope || 'Abstract Only',
       created_at: analysisRecord.created_at || new Date().toISOString(),
     };
 
@@ -271,11 +337,33 @@ export const db = {
         console.error("Supabase getAnalysisResult error:", error);
         return null;
       }
-      return data;
+      if (data) {
+        return {
+          ...data,
+          analysisScope: data.analysis_scope || 'Abstract Only',
+          researchObjective: data.research_objective,
+          mainFindings: data.main_findings,
+          genesIdentified: data.genes_identified,
+          proteinsIdentified: data.proteins_identified,
+          biologicalPathways: data.biological_pathways,
+          relationshipWithEndometriosis: data.relationship_with_endometriosis,
+          experimentalModel: data.experimental_model,
+          evidenceClassification: data.evidence_classification,
+          evidenceDistribution: data.evidence_distribution,
+          potentialDrugTargets: data.potential_drug_targets,
+        };
+      }
+      return null;
     }
 
     const analyses = getTableData('research_analysis_results');
-    return analyses.find((a) => a.paper_id === paperId && a.user_id === userId) || null;
+    const match = analyses.find((a) => a.paper_id === paperId && a.user_id === userId);
+    if (!match) return null;
+    return {
+      ...match,
+      analysisScope: match.analysis_scope || match.analysisScope || 'Abstract Only',
+      analysis_scope: match.analysis_scope || match.analysisScope || 'Abstract Only',
+    };
   },
 
   /**

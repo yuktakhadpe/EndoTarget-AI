@@ -565,11 +565,11 @@ export function LibraryPage() {
                     </span>
                     <span className="text-xs text-slate-500">{selectedPaper.journal} ({selectedPaper.year})</span>
                     <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border flex items-center gap-1 ${
-                      (selectedPaper.analysis_scope || selectedPaper.analysisScope || selectedAnalysis?.analysisScope) === 'Full Text'
+                      (selectedPaper.analysis_scope || selectedPaper.analysisScope || selectedAnalysis?.analysis_scope || selectedAnalysis?.analysisScope) === 'Full Text'
                         ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                         : 'bg-amber-50 text-amber-800 border-amber-200'
                     }`}>
-                      {(selectedPaper.analysis_scope || selectedPaper.analysisScope || selectedAnalysis?.analysisScope) === 'Full Text'
+                      {(selectedPaper.analysis_scope || selectedPaper.analysisScope || selectedAnalysis?.analysis_scope || selectedAnalysis?.analysisScope) === 'Full Text'
                         ? 'Full Text Analysis'
                         : 'Abstract Only Analysis'}
                     </span>
