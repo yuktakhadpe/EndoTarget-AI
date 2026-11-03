@@ -13,7 +13,8 @@ import {
   Scale,
   Sparkles,
   BookmarkCheck,
-  Database
+  Database,
+  Brain
 } from 'lucide-react';
 
 export function Sidebar() {
@@ -55,6 +56,14 @@ export function Sidebar() {
       sublabel: '& Prioritization',
       icon: Sliders,
       badge: 'Algorithm Live',
+      highlight: true,
+    },
+    {
+      id: 'human-model',
+      label: 'Human Model',
+      sublabel: '& Target Generation',
+      icon: Brain,
+      badge: 'AI Discovery',
       highlight: true,
     },
     {

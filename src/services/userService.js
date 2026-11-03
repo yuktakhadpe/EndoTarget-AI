@@ -5,7 +5,7 @@
  *
  * Backed by browser localStorage with isolated per-user keys.
  */
-import { supabase } from './supabaseClient';
+import { supabase } from './supabaseClient.js';
 
 const USERS_STORAGE_KEY = 'endotarget_users';
 const ACTIVE_SESSION_KEY = 'endotarget_active_session';
@@ -68,6 +68,7 @@ const ELENA_VANCE_INITIAL_DATA = {
     }
   ],
   uploadedPapers: [],
+  humanModelQueries: [],
 };
 
 /**
@@ -172,6 +173,7 @@ export function registerUser({ name, email, password, role }) {
     savedPaperIds: [],
     notes: [],
     uploadedPapers: [],
+    humanModelQueries: [],
   };
 
   localStorage.setItem(`${USER_DATA_PREFIX}${uniqueId}`, JSON.stringify(initialUserData));
@@ -271,6 +273,7 @@ export function getUserData(userId) {
     savedPaperIds: [],
     notes: [],
     uploadedPapers: [],
+    humanModelQueries: [],
   };
 }
 

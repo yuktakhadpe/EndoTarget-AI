@@ -47,6 +47,7 @@ export function Navbar({ onMobileMenuToggle, isMobileMenuOpen }) {
     pathway: 'Biological Pathway Explorer',
     workspace: 'Research Workspace & Reports',
     resources: 'Biological Resources & Databases',
+    'human-model': 'Human Model & Target Discovery',
   };
 
   return (

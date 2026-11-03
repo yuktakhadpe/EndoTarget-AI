@@ -123,9 +123,10 @@ useEffect(() => {
   }, [user?.id, user?.isLoggedIn]);
 
   // User workspace data - initialized after Supabase authentication
-const [savedTargetIds, setSavedTargetIds] = useState([]);
-const [savedPaperIds, setSavedPaperIds] = useState([]);
-const [notes, setNotes] = useState([]);
+  const [savedTargetIds, setSavedTargetIds] = useState([]);
+  const [savedPaperIds, setSavedPaperIds] = useState([]);
+  const [notes, setNotes] = useState([]);
+  const [humanModelQueries, setHumanModelQueries] = useState([]);
 
   // Automatically persist user-specific data whenever it changes
   useEffect(() => {
@@ -134,9 +135,10 @@ const [notes, setNotes] = useState([]);
         savedTargetIds,
         savedPaperIds,
         notes,
+        humanModelQueries,
       });
     }
-  }, [user, savedTargetIds, savedPaperIds, notes]);
+  }, [user, savedTargetIds, savedPaperIds, notes, humanModelQueries]);
 
   // Notifications queue
   const [notification, setNotification] = useState(null);
@@ -445,6 +447,8 @@ const [notes, setNotes] = useState([]);
         resourceQuery,
         setResourceQuery,
         openResourceExplorer,
+        humanModelQueries,
+        setHumanModelQueries,
       }}
     >
       {children}

@@ -16,6 +16,7 @@ import { TargetRankingPage } from './pages/TargetRankingPage';
 import { PathwayExplorerPage } from './pages/PathwayExplorerPage';
 import { WorkspaceReportsPage } from './pages/WorkspaceReportsPage';
 import { BioResourcesPage } from './pages/BioResourcesPage';
+import { HumanModelPage } from './pages/HumanModelPage';
 
 function AppContent() {
   const { currentPage, user } = useResearch();
@@ -74,6 +75,7 @@ function AppContent() {
           {currentPage === 'library' && <LibraryPage />}
           {currentPage === 'discovery' && <TargetDiscoveryPage />}
           {currentPage === 'ranking' && <TargetRankingPage />}
+          {currentPage === 'human-model' && <HumanModelPage />}
           {currentPage === 'pathway' && <PathwayExplorerPage />}
           {currentPage === 'workspace' && <WorkspaceReportsPage />}
           {currentPage === 'resources' && <BioResourcesPage />}
