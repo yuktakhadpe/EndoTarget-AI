@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useResearch } from '../context/ResearchContext';
-import { generateTop10Targets, getHumanModelQueries, deleteHumanModelQuery } from '../services/humanModelService';
+import {
+  generateTop10Targets,
+  getHumanModelQueries,
+  deleteHumanModelQuery,
+  evaluateExperimentalModels,
+  getModelRecommendation,
+  saveModelRecommendation
+} from '../services/humanModelService';
 import { CategoryBadge } from '../components/EvidenceBadge';
 import { PriorityScoreBar } from '../components/PriorityScoreBar';
 import {
@@ -26,7 +33,14 @@ import {
   Trash2,
   FlaskConical,
   HelpCircle,
-  Info
+  Info,
+  Copy,
+  Check,
+  Download,
+  Microscope,
+  Sliders,
+  Award,
+  ChevronRight
 } from 'lucide-react';
 
 export function HumanModelPage() {
@@ -52,6 +66,26 @@ export function HumanModelPage() {
 
   // Saved query history
   const [queryHistory, setQueryHistory] = useState([]);
+
+  // Experimental Model Recommendation state
+  const [modelRecommendation, setModelRecommendation] = useState(null);
+  const [isRecommendingModel, setIsRecommendingModel] = useState(false);
+  const [activeModelTab, setActiveModelTab] = useState('priority'); // 'priority' | 'alternatives' | 'strategy' | 'citations'
+  const [copiedStrategy, setCopiedStrategy] = useState(false);
+
+  // Check for cached recommendation whenever selected target or user changes
+  useEffect(() => {
+    if (user?.id && selectedTargetSymbol) {
+      const cached = getModelRecommendation(user.id, selectedTargetSymbol);
+      if (cached) {
+        setModelRecommendation(cached);
+      } else {
+        setModelRecommendation(null);
+      }
+    } else {
+      setModelRecommendation(null);
+    }
+  }, [selectedTargetSymbol, user?.id]);
 
   // Load history on mount or user switch
   useEffect(() => {
@@ -159,6 +193,178 @@ export function HumanModelPage() {
   ) || currentResult?.top10Targets?.[0] || null;
 
   const isSavedInWorkspace = selectedTarget ? savedTargetIds.includes(selectedTarget.id) : false;
+
+  // Trigger experimental model evaluation for the selected target
+  const handleRecommendModel = () => {
+    if (!selectedTarget) return;
+    setIsRecommendingModel(true);
+
+    setTimeout(() => {
+      try {
+        const rec = evaluateExperimentalModels(selectedTarget, currentResult?.question || '', {
+          userId: user?.id
+        });
+        setModelRecommendation(rec);
+        showNotification(`Recommended ${rec.recommendedPriorityModel.modelName} for ${selectedTarget.geneSymbol}`, 'success');
+
+        // Smooth scroll to the recommendation section
+        setTimeout(() => {
+          const el = document.getElementById('experimental-model-section');
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 100);
+      } catch (err) {
+        console.error("Model recommendation failed:", err);
+        showNotification("Failed to evaluate experimental models", "warning");
+      } finally {
+        setIsRecommendingModel(false);
+      }
+    }, 300);
+  };
+
+  // Copy experimental strategy protocol to clipboard
+  const handleCopyStrategy = () => {
+    if (!modelRecommendation) return;
+    const { targetSymbol, targetName, recommendedPriorityModel, suggestedExperimentalStrategy } = modelRecommendation;
+    const strat = suggestedExperimentalStrategy;
+
+    const markdownText = `# Experimental Model Strategy Brief: ${targetSymbol} (${targetName})
+## Priority Model: ${recommendedPriorityModel.modelName} (Suitability Score: ${recommendedPriorityModel.suitabilityScore}%)
+Category: ${recommendedPriorityModel.modelCategory}
+
+### Why this model is suitable:
+${recommendedPriorityModel.targetSpecificSuitabilityReason}
+
+### Key Biological Mechanisms Studied:
+${recommendedPriorityModel.biologicalMechanisms.map((m) => `- ${m}`).join('\n')}
+
+### Suggested Quantitative Readouts:
+${recommendedPriorityModel.suggestedReadouts.map((r) => `- ${r}`).join('\n')}
+
+### Clinical Translational Impact:
+${recommendedPriorityModel.expectedResearchValue}
+
+### Practical Considerations & Limitations:
+${recommendedPriorityModel.practicalConsiderations}
+
+---
+## Actionable 4-Step Experimental Protocol Roadmap:
+### ${strat.step1.title}
+${strat.step1.description}
+${strat.step1.protocols.map((p) => `  * ${p}`).join('\n')}
+
+### ${strat.step2.title}
+${strat.step2.description}
+${strat.step2.protocols.map((p) => `  * ${p}`).join('\n')}
+
+### ${strat.step3.title}
+${strat.step3.description}
+${strat.step3.protocols.map((p) => `  * ${p}`).join('\n')}
+
+### ${strat.step4.title}
+${strat.step4.description}
+${strat.step4.protocols.map((p) => `  * ${p}`).join('\n')}
+
+---
+## Literature Benchmark Citations:
+${recommendedPriorityModel.literatureEvidence.map((c) => `- ${c.authors} (${c.year}). "${c.title}" ${c.journal}. PMID: ${c.pmid}, DOI: ${c.doi}`).join('\n')}
+`;
+
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(markdownText).then(() => {
+        setCopiedStrategy(true);
+        showNotification("Experimental strategy copied to clipboard", "success");
+        setTimeout(() => setCopiedStrategy(false), 2500);
+      }).catch(() => {
+        showNotification("Clipboard access denied", "warning");
+      });
+    }
+  };
+
+  // Download experimental strategy brief as text file
+  const handleDownloadStrategy = () => {
+    if (!modelRecommendation) return;
+    const { targetSymbol, targetName, recommendedPriorityModel, suggestedExperimentalStrategy } = modelRecommendation;
+    const strat = suggestedExperimentalStrategy;
+
+    const fileContent = `================================================================================
+ENDOTARGET AI - TARGET-SPECIFIC EXPERIMENTAL MODEL RECOMMENDATION
+================================================================================
+Target: ${targetSymbol} (${targetName})
+Evaluation Date: ${new Date(modelRecommendation.evaluationDate).toLocaleString()}
+Dominant Biological Theme: ${modelRecommendation.dominantTheme}
+
+RECOMMENDED PRIORITY MODEL (#1):
+Model: ${recommendedPriorityModel.modelName}
+Suitability Score: ${recommendedPriorityModel.suitabilityScore}%
+Category: ${recommendedPriorityModel.modelCategory}
+
+WHY THIS MODEL IS SUITABLE:
+${recommendedPriorityModel.targetSpecificSuitabilityReason}
+
+BIOLOGICAL MECHANISMS STUDIED:
+${recommendedPriorityModel.biologicalMechanisms.map((m, i) => `${i + 1}. ${m}`).join('\n')}
+
+SUGGESTED QUANTITATIVE READOUTS:
+${recommendedPriorityModel.suggestedReadouts.map((r, i) => `${i + 1}. ${r}`).join('\n')}
+
+CLINICAL TRANSLATIONAL IMPACT:
+${recommendedPriorityModel.expectedResearchValue}
+
+PRACTICAL CONSIDERATIONS & LIMITATIONS:
+${recommendedPriorityModel.practicalConsiderations}
+
+================================================================================
+ACTIONABLE EXPERIMENTAL ROADMAP (4-STEP PROTOCOL)
+================================================================================
+
+${strat.step1.title}:
+${strat.step1.description}
+${strat.step1.protocols.map((p) => `  - ${p}`).join('\n')}
+
+${strat.step2.title}:
+${strat.step2.description}
+${strat.step2.protocols.map((p) => `  - ${p}`).join('\n')}
+
+${strat.step3.title}:
+${strat.step3.description}
+${strat.step3.protocols.map((p) => `  - ${p}`).join('\n')}
+
+${strat.step4.title}:
+${strat.step4.description}
+${strat.step4.protocols.map((p) => `  - ${p}`).join('\n')}
+
+================================================================================
+ALTERNATIVE MODEL COMPARISON MATRIX (ALL 4 MODELS)
+================================================================================
+${modelRecommendation.rankedModels.map((m) => `
+Rank #${m.rank}: ${m.modelName} (Score: ${m.suitabilityScore}%)
+- Main Advantage: ${m.mainAdvantage}
+- Main Limitation: ${m.mainLimitation}
+- Rationale: ${m.targetSpecificSuitabilityReason}
+`).join('\n')}
+
+================================================================================
+PEER-REVIEWED LITERATURE CITATIONS
+================================================================================
+${recommendedPriorityModel.literatureEvidence.map((c) => `
+- ${c.authors} (${c.year}). "${c.title}" ${c.journal}. PMID: ${c.pmid} | DOI: ${c.doi}
+  Key Finding: ${c.findings}
+`).join('\n')}
+`;
+
+    const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `EndoTarget_${targetSymbol}_Experimental_Model_Strategy.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showNotification(`Downloaded ${targetSymbol} Experimental Strategy Brief`, "success");
+  };
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-8 w-full max-w-7xl xl:max-w-[1400px] 2xl:max-w-[1600px] mx-auto min-h-full">
@@ -433,6 +639,25 @@ export function HumanModelPage() {
 
                 <div className="flex items-center gap-2">
                   <button
+                    onClick={handleRecommendModel}
+                    disabled={isRecommendingModel}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white rounded-lg font-bold text-xs transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                    title="Evaluate the 4 experimental models for this target"
+                  >
+                    {isRecommendingModel ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Evaluating Models...</span>
+                      </>
+                    ) : (
+                      <>
+                        <FlaskConical className="w-3.5 h-3.5 text-cyan-200" />
+                        <span>Recommend Experimental Model</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
                     onClick={() => toggleSaveTarget(selectedTarget.id)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors cursor-pointer ${
                       isSavedInWorkspace
@@ -593,6 +818,578 @@ export function HumanModelPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* 5. EXPERIMENTAL MODEL RECOMMENDATION CALLOUT BANNER */}
+                <div className="p-4 rounded-xl bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 border border-teal-500/30 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-teal-500/20 border border-teal-500/40 flex items-center justify-center text-teal-300 shrink-0">
+                      <FlaskConical className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-heading font-bold text-xs text-white flex items-center gap-2">
+                        <span>Target-Specific Experimental Model Recommendation</span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-500/30 text-teal-300 border border-teal-400/30">
+                          4 Human Models
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
+                        Evaluate patient tissue explants, primary cells, organ-on-chip, and organoids to discover the optimal validation system for <strong className="text-teal-300 font-mono-code">{selectedTarget.geneSymbol}</strong>.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleRecommendModel}
+                    disabled={isRecommendingModel}
+                    className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-md shadow-teal-500/20 flex items-center justify-center gap-2 shrink-0 cursor-pointer disabled:opacity-50"
+                  >
+                    {isRecommendingModel ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                        <span>Evaluating 4 Models...</span>
+                      </>
+                    ) : (
+                      <>
+                        <FlaskConical className="w-4 h-4 text-slate-950" />
+                        <span>{modelRecommendation ? 'Re-evaluate Models' : 'Recommend Experimental Model'}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          )}
+
+          {/* 6. TARGET-SPECIFIC EXPERIMENTAL MODEL RECOMMENDATION SECTION */}
+          {modelRecommendation && selectedTarget && modelRecommendation.targetSymbol === selectedTarget.geneSymbol && (
+            <div id="experimental-model-section" className="bg-white rounded-2xl border border-teal-200 shadow-md overflow-hidden animate-in fade-in duration-300">
+              
+              {/* Header Banner */}
+              <div className="p-6 bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 text-white border-b border-teal-900/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-500/40 uppercase tracking-wider flex items-center gap-1.5">
+                      <FlaskConical className="w-3.5 h-3.5 text-teal-400" />
+                      Experimental Model Recommendation Engine
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      Target: <strong className="text-white font-mono-code">{modelRecommendation.targetSymbol}</strong>
+                    </span>
+                    <span className="text-xs text-slate-400">•</span>
+                    <span className="text-xs text-teal-300 font-semibold">{modelRecommendation.dominantTheme}</span>
+                  </div>
+                  <h2 className="font-heading font-black text-xl text-white flex items-center gap-2">
+                    <span>Recommended Priority Model:</span>
+                    <span className="text-teal-400">{modelRecommendation.recommendedPriorityModel.modelName}</span>
+                  </h2>
+                  <p className="text-xs text-slate-300 mt-1 max-w-3xl leading-relaxed">
+                    Evaluated 4 human experimental model systems using 5 biological criteria: biological relevance, disease mechanism reproduction, readout suitability, translational relevance, and technical feasibility.
+                  </p>
+                </div>
+
+                {/* Header Action Buttons */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleCopyStrategy}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                      copiedStrategy
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                        : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border-slate-700'
+                    }`}
+                    title="Copy formatted markdown strategy protocol"
+                  >
+                    {copiedStrategy ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5 text-teal-400" />}
+                    <span>{copiedStrategy ? 'Copied Protocol!' : 'Copy Protocol'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadStrategy}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-teal-600/30 cursor-pointer"
+                    title="Download experimental strategy brief (.txt)"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Export Brief</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRecommendModel}
+                    disabled={isRecommendingModel}
+                    className="p-2 bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border border-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                    title="Re-run model evaluation"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isRecommendingModel ? 'animate-spin text-teal-400' : ''}`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Navigation Tabs */}
+              <div className="px-6 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center gap-2 text-xs">
+                {[
+                  { id: 'priority', label: 'Recommended Priority Model', icon: Award, badge: 'Rank #1' },
+                  { id: 'alternatives', label: 'Alternative Model Rankings', icon: Layers, badge: 'All 4 Models' },
+                  { id: 'strategy', label: 'Actionable Experimental Strategy', icon: Sliders, badge: '4-Step Protocol' },
+                  { id: 'citations', label: 'Peer-Reviewed Citations', icon: ShieldCheck, badge: 'Literature' },
+                ].map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeModelTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveModelTab(tab.id)}
+                      className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer border ${
+                        isActive
+                          ? 'bg-teal-600 text-white border-teal-600 shadow-sm'
+                          : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-teal-600'}`} />
+                      <span>{tab.label}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                        isActive ? 'bg-teal-800 text-teal-100' : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {tab.badge}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* TAB CONTENT */}
+              <div className="p-6">
+                
+                {/* ------------------------------------------------------------- */}
+                {/* TAB 1: RECOMMENDED PRIORITY MODEL (RANK #1)                  */}
+                {/* ------------------------------------------------------------- */}
+                {activeModelTab === 'priority' && (
+                  <div className="space-y-6 animate-in fade-in duration-200">
+                    
+                    {/* Top Highlight Card */}
+                    <div className="p-6 rounded-2xl bg-gradient-to-r from-teal-50 via-cyan-50/50 to-emerald-50/40 border-2 border-teal-500/40 shadow-sm">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-teal-200/60">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold shadow-md shadow-teal-600/30 shrink-0">
+                            <Award className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-600 text-white">
+                                Rank #1 Recommended Priority Model
+                              </span>
+                              <span className="text-xs text-slate-500 font-medium">
+                                Category: <strong>{modelRecommendation.recommendedPriorityModel.modelCategory}</strong>
+                              </span>
+                            </div>
+                            <h3 className="font-heading font-black text-xl text-slate-900 mt-1">
+                              {modelRecommendation.recommendedPriorityModel.modelName}
+                            </h3>
+                          </div>
+                        </div>
+
+                        {/* Suitability Score Gauge */}
+                        <div className="flex items-center gap-3 bg-white px-4 py-2.5 rounded-xl border border-teal-200 shadow-xs shrink-0">
+                          <div className="text-right">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Suitability Score</span>
+                            <span className="text-2xl font-heading font-black text-teal-600">
+                              {modelRecommendation.recommendedPriorityModel.suitabilityScore}%
+                            </span>
+                          </div>
+                          <div className="w-11 h-11 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700 font-bold text-xs">
+                            Top
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 5-Criteria Progress Bars */}
+                      <div className="pt-4 space-y-2">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">
+                          Evaluation Criteria Breakdown (0–100%):
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+                          {[
+                            { label: "Biological Relevance", score: modelRecommendation.recommendedPriorityModel.scoresBreakdown.biologicalRelevance, weight: "35%" },
+                            { label: "Disease Mechanism Reproduction", score: modelRecommendation.recommendedPriorityModel.scoresBreakdown.diseaseMechanismReproduction, weight: "25%" },
+                            { label: "Readout Suitability", score: modelRecommendation.recommendedPriorityModel.scoresBreakdown.readoutSuitability, weight: "20%" },
+                            { label: "Translational Relevance", score: modelRecommendation.recommendedPriorityModel.scoresBreakdown.translationalRelevance, weight: "15%" },
+                            { label: "Technical Feasibility", score: modelRecommendation.recommendedPriorityModel.scoresBreakdown.technicalFeasibility, weight: "5%" },
+                          ].map((crit, idx) => (
+                            <div key={idx} className="bg-white/80 p-2.5 rounded-xl border border-teal-200/80">
+                              <div className="flex justify-between items-center text-[11px] mb-1">
+                                <span className="font-medium text-slate-600 truncate mr-1">{crit.label}</span>
+                                <span className="font-bold text-teal-700">{crit.score}%</span>
+                              </div>
+                              <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                <div className="h-full bg-teal-600 rounded-full" style={{ width: `${crit.score}%` }} />
+                              </div>
+                              <span className="text-[9px] text-slate-400 block mt-0.5">Weight: {crit.weight}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Why this model is suitable */}
+                    <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2">
+                      <h4 className="font-heading font-extrabold text-xs uppercase tracking-wider text-teal-800 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-teal-600" />
+                        Why This Model is Suitable for {modelRecommendation.targetSymbol} ({modelRecommendation.targetName})
+                      </h4>
+                      <p className="text-xs text-slate-700 leading-relaxed font-medium">
+                        {modelRecommendation.recommendedPriorityModel.targetSpecificSuitabilityReason}
+                      </p>
+                    </div>
+
+                    {/* 2-Column: Biological Mechanisms & Suggested Readouts */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      
+                      {/* Biological Mechanisms */}
+                      <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                        <h4 className="font-heading font-bold text-xs uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                          <Activity className="w-4 h-4 text-emerald-600" />
+                          Biological Mechanisms Studied in This Model
+                        </h4>
+                        <ul className="space-y-2">
+                          {modelRecommendation.recommendedPriorityModel.biologicalMechanisms.map((mech, i) => (
+                            <li key={i} className="flex items-start gap-2 text-slate-700 leading-relaxed">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                              <span>{mech}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {/* Suggested Experimental Readouts */}
+                      <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                        <h4 className="font-heading font-bold text-xs uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                          <Microscope className="w-4 h-4 text-cyan-600" />
+                          Suggested Quantitative Readouts
+                        </h4>
+                        <ul className="space-y-2">
+                          {modelRecommendation.recommendedPriorityModel.suggestedReadouts.map((ro, i) => (
+                            <li key={i} className="flex items-start gap-2 text-slate-700 leading-relaxed">
+                              <span className="w-4 h-4 rounded-full bg-cyan-100 text-cyan-800 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                                {i + 1}
+                              </span>
+                              <span>{ro}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    {/* 2-Column: Research Value & Practical Considerations */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      
+                      {/* Expected Research Value */}
+                      <div className="p-5 rounded-2xl bg-teal-50/60 border border-teal-200 space-y-2">
+                        <h4 className="font-heading font-bold text-xs uppercase tracking-wider text-teal-900 flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-teal-600" />
+                          Expected Research Value & Translational Impact
+                        </h4>
+                        <p className="text-slate-700 leading-relaxed">
+                          {modelRecommendation.recommendedPriorityModel.expectedResearchValue}
+                        </p>
+                      </div>
+
+                      {/* Practical Considerations */}
+                      <div className="p-5 rounded-2xl bg-amber-50/60 border border-amber-200 space-y-2">
+                        <h4 className="font-heading font-bold text-xs uppercase tracking-wider text-amber-900 flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-amber-600" />
+                          Practical Considerations & Technical Limitations
+                        </h4>
+                        <p className="text-slate-700 leading-relaxed">
+                          {modelRecommendation.recommendedPriorityModel.practicalConsiderations}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Quick Link to 4-Step Strategy */}
+                    <div className="p-4 rounded-xl bg-slate-100 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2 text-slate-700">
+                        <Sliders className="w-4 h-4 text-teal-600" />
+                        <span>Ready to run this assay? Review the actionable 4-step experimental protocol roadmap.</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveModelTab('strategy')}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg transition-colors cursor-pointer shrink-0"
+                      >
+                        <span>View 4-Step Protocol</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                  </div>
+                )}
+
+                {/* ------------------------------------------------------------- */}
+                {/* TAB 2: ALTERNATIVE MODEL RANKINGS (ALL 4 MODELS)             */}
+                {/* ------------------------------------------------------------- */}
+                {activeModelTab === 'alternatives' && (
+                  <div className="space-y-6 animate-in fade-in duration-200">
+                    <div>
+                      <h3 className="font-heading font-bold text-sm text-slate-900">
+                        Comparative Evaluation of All 4 Experimental Model Systems
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Evaluated specifically for <strong className="text-slate-800">{modelRecommendation.targetSymbol}</strong>. Ranks indicate biological suitability, readout feasibility, and disease fidelity.
+                      </p>
+                    </div>
+
+                    <div className="space-y-4">
+                      {modelRecommendation.rankedModels.map((model) => {
+                        const isRank1 = model.rank === 1;
+                        return (
+                          <div
+                            key={model.modelId}
+                            className={`p-5 rounded-2xl border transition-all ${
+                              isRank1
+                                ? 'bg-gradient-to-r from-teal-50/70 via-white to-emerald-50/40 border-2 border-teal-500/80 shadow-sm'
+                                : 'bg-slate-50 border-slate-200 text-slate-800'
+                            }`}
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/80">
+                              <div className="flex items-center gap-3">
+                                <span className={`w-8 h-8 rounded-xl font-bold flex items-center justify-center text-xs shrink-0 ${
+                                  isRank1 ? 'bg-teal-600 text-white shadow-sm' : 'bg-slate-200 text-slate-700'
+                                }`}>
+                                  #{model.rank}
+                                </span>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <h4 className="font-heading font-black text-sm text-slate-900">
+                                      {model.modelName}
+                                    </h4>
+                                    {isRank1 && (
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                        Recommended Priority
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[11px] text-slate-500 font-medium">
+                                    {model.modelCategory}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3 shrink-0">
+                                <div className="text-right">
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Suitability Score</span>
+                                  <span className={`text-lg font-heading font-black ${isRank1 ? 'text-teal-600' : 'text-slate-700'}`}>
+                                    {model.suitabilityScore}%
+                                  </span>
+                                </div>
+                                <div className="w-20 h-2 bg-slate-200 rounded-full overflow-hidden">
+                                  <div className={`h-full rounded-full ${isRank1 ? 'bg-teal-600' : 'bg-slate-500'}`} style={{ width: `${model.suitabilityScore}%` }} />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Rationale */}
+                            <p className="text-xs text-slate-700 leading-relaxed font-medium mt-3">
+                              <strong>Ranking Rationale: </strong>{model.targetSpecificSuitabilityReason}
+                            </p>
+
+                            {/* Main Advantage & Limitation */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 text-xs">
+                              <div className="p-3 rounded-xl bg-white border border-emerald-200 text-emerald-950 flex items-start gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                                <div>
+                                  <strong>Main Advantage: </strong>{model.mainAdvantage}
+                                </div>
+                              </div>
+
+                              <div className="p-3 rounded-xl bg-white border border-amber-200 text-amber-950 flex items-start gap-2">
+                                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <div>
+                                  <strong>Main Limitation: </strong>{model.mainLimitation}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ------------------------------------------------------------- */}
+                {/* TAB 3: ACTIONABLE EXPERIMENTAL STRATEGY (4-STEP ROADMAP)     */}
+                {/* ------------------------------------------------------------- */}
+                {activeModelTab === 'strategy' && (
+                  <div className="space-y-6 animate-in fade-in duration-200">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-heading font-bold text-sm text-slate-900">
+                          Actionable 4-Step Experimental Roadmap
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Standard Operating Procedure (SOP) to validate <strong className="text-slate-800">{modelRecommendation.targetSymbol}</strong> using <strong>{modelRecommendation.recommendedPriorityModel.modelName}</strong>.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleCopyStrategy}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          {copiedStrategy ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-teal-600" />}
+                          <span>{copiedStrategy ? 'Copied!' : 'Copy Roadmap'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleDownloadStrategy}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Download Protocol</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Step Cards */}
+                    <div className="space-y-4 text-xs">
+                      {[
+                        modelRecommendation.suggestedExperimentalStrategy.step1,
+                        modelRecommendation.suggestedExperimentalStrategy.step2,
+                        modelRecommendation.suggestedExperimentalStrategy.step3,
+                        modelRecommendation.suggestedExperimentalStrategy.step4,
+                      ].map((step, idx) => (
+                        <div key={idx} className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-3">
+                          <div className="flex items-center gap-3">
+                            <span className="w-7 h-7 rounded-lg bg-teal-600 text-white font-bold flex items-center justify-center text-xs shrink-0">
+                              0{step.stepNumber}
+                            </span>
+                            <div>
+                              <h4 className="font-heading font-black text-sm text-slate-900">
+                                {step.title}
+                              </h4>
+                              <p className="text-slate-500 text-[11px]">
+                                {step.description}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="pl-10 space-y-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                              Standard Operating Protocol (SOP):
+                            </span>
+                            <ul className="space-y-1.5">
+                              {step.protocols.map((protocol, pIdx) => (
+                                <li key={pIdx} className="flex items-start gap-2 text-slate-700 leading-relaxed">
+                                  <ChevronRight className="w-3.5 h-3.5 text-teal-600 shrink-0 mt-0.5" />
+                                  <span>{protocol}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Proviso / Safety Note */}
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 flex items-start gap-2.5">
+                      <Info className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                      <p className="leading-relaxed">
+                        {modelRecommendation.provisionalValidationNote}
+                      </p>
+                    </div>
+
+                  </div>
+                )}
+
+                {/* ------------------------------------------------------------- */}
+                {/* TAB 4: PEER-REVIEWED CITATIONS & EVIDENCE                   */}
+                {/* ------------------------------------------------------------- */}
+                {activeModelTab === 'citations' && (
+                  <div className="space-y-6 animate-in fade-in duration-200">
+                    
+                    {/* Literature vs AI distinction header */}
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                      <div>
+                        <h4 className="font-heading font-bold text-xs uppercase tracking-wider text-slate-800">
+                          Evidence Classification
+                        </h4>
+                        <p className="text-slate-500 text-[11px] mt-0.5">
+                          Seminal peer-reviewed benchmarks establishing model validity in endometriosis.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-2.5 py-1 rounded-full font-bold text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          Published Literature Grounding
+                        </span>
+                        <span className="px-2.5 py-1 rounded-full font-bold text-[10px] bg-cyan-100 text-cyan-800 border border-cyan-300 flex items-center gap-1">
+                          <Brain className="w-3 h-3 text-cyan-700" />
+                          AI Protocol Adaptation
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Benchmark Citations for Priority Model */}
+                    <div className="space-y-4 text-xs">
+                      <h4 className="font-heading font-bold text-xs uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-teal-600" />
+                        Peer-Reviewed Model Citations for {modelRecommendation.recommendedPriorityModel.modelName}
+                      </h4>
+
+                      {modelRecommendation.recommendedPriorityModel.literatureEvidence.map((cit, idx) => (
+                        <div key={idx} className="p-4 rounded-xl bg-white border border-slate-200 shadow-xs space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-bold text-slate-900 text-xs">
+                              {cit.authors} ({cit.year})
+                            </span>
+                            <span className="text-[11px] text-teal-700 font-semibold">
+                              {cit.journal}
+                            </span>
+                          </div>
+
+                          <div className="font-semibold text-slate-800 text-xs italic">
+                            "{cit.title}"
+                          </div>
+
+                          <p className="text-slate-600 text-[11px] leading-relaxed">
+                            <strong>Key Findings & Methodology Relevance: </strong>{cit.findings}
+                          </p>
+
+                          <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px]">
+                            {cit.pmid && (
+                              <a
+                                href={`https://pubmed.ncbi.nlm.nih.gov/${cit.pmid}/`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-teal-700 hover:text-teal-900 font-mono-code font-bold underline"
+                              >
+                                <span>PMID: {cit.pmid}</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                            {cit.doi && (
+                              <a
+                                href={`https://doi.org/${cit.doi}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-700 font-mono-code font-semibold"
+                              >
+                                <span>DOI: {cit.doi}</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                  </div>
+                )}
 
               </div>
             </div>

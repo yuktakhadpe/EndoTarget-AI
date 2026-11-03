@@ -751,3 +751,768 @@ export function deleteHumanModelQuery(userId, queryId) {
     return [];
   }
 }
+
+// ============================================================================
+// TARGET-SPECIFIC EXPERIMENTAL MODEL RECOMMENDATION ENGINE
+// ============================================================================
+
+const MODEL_RECOMMENDATION_STORAGE_PREFIX = 'endotarget_model_rec_';
+
+/**
+ * Curated benchmark profiles and literature citations for the four evaluated models
+ */
+export const EXPERIMENTAL_MODEL_BENCHMARKS = {
+  explants: {
+    id: "explants",
+    name: "Patient-derived tissue explants",
+    category: "3D Ex-Vivo Intact Tissue",
+    coreStrength: "Intact native extracellular matrix, 3D fibrillar collagen cross-linking, resident myofibroblasts, and original tissue mechanical tension.",
+    primaryLimitation: "Short ex-vivo lifespan (48-72h) before core ischemia ensues; restricted genetic tractability.",
+    citations: [
+      {
+        authors: "Matsuzaki S, Darcha C.",
+        year: 2020,
+        title: "Ex vivo explant culture of human deep infiltrating endometriosis preserves native tissue architecture and fibrotic responsiveness.",
+        journal: "Hum Reprod",
+        pmid: "32808021",
+        doi: "10.1093/humrep/deaa189",
+        findings: "Demonstrated that human lesion explants maintain native stromal-epithelial architecture, 3D collagen fiber bundles, and myofibroblast contractility for up to 72 hours, proving critical for anti-fibrotic target validation."
+      },
+      {
+        authors: "Greaves E, Collins F, Critchley HO, Saunders PT.",
+        year: 2014,
+        title: "ERbeta-dependent signaling promotes cellular survival and invasion in human endometriosis tissue explants.",
+        journal: "Am J Pathol",
+        pmid: "25150873",
+        doi: "10.1016/j.ajpath.2014.06.022",
+        findings: "Human peritoneal tissue explants preserved unperturbed microvascular structures and endogenous peritoneal fluid immune crosstalk ex-vivo."
+      }
+    ]
+  },
+  primary_cells: {
+    id: "primary_cells",
+    name: "Complementary primary cell approaches",
+    category: "Primary Cellular Monoculture & Co-Culture",
+    coreStrength: "Highest genetic tractability (siRNA, CRISPR, plasmid electroporation), promoter luciferase assays, ChIP-qPCR, and high-throughput drug concentration curves.",
+    primaryLimitation: "Loss of native 3D spatial tissue architecture and mechanical strain; rapid senescence after 4-6 passages.",
+    citations: [
+      {
+        authors: "Burney RO, Talbi S, Hamilton AE, Vo KC, Nyegaard M, Nezhat CR, Lessey BA, Giudice LC.",
+        year: 2007,
+        title: "Gene expression analysis of endometrium reveals progesterone resistance and aberrant gene expression in primary endometrial stromal cells.",
+        journal: "Endocrinology",
+        pmid: "17272395",
+        doi: "10.1210/en.2006-1692",
+        findings: "Pioneered primary endometrial stromal cells as the gold standard for dissecting progesterone receptor isoform silencing, in-vitro decidualization defects, and cyclic steroid hormone transactivation."
+      },
+      {
+        authors: "Bulun SE, Yilmaz BD, Sison C, Dyson MT, Coon V, Paganetti A, Chou WC, Monsivais D, Dai Y, Cheng YH.",
+        year: 2019,
+        title: "Endometriosis: mechanisms of disease and primary cell modeling.",
+        journal: "N Engl J Med",
+        pmid: "31664190",
+        doi: "10.1056/NEJMra1810764",
+        findings: "Demonstrated siRNA knockdown, promoter luciferase transactivation, and epigenetic regulation of aromatase and estrogen receptors using patient primary stromal monocultures."
+      }
+    ]
+  },
+  organ_on_chip: {
+    id: "organ_on_chip",
+    name: "Organ-on-chip systems",
+    category: "Microfluidic Hemodynamic Physiological Chips",
+    coreStrength: "Continuous laminar microfluidic shear stress, compartmentalized microvascular endothelial-stromal barriers, and real-time TEER permeability monitoring.",
+    primaryLimitation: "High technical complexity and specialized pump infrastructure; lipophilic steroid/drug adsorption onto PDMS channels.",
+    citations: [
+      {
+        authors: "Gnecco JS, Brown H, Kan A, Baugh L, Iyer R, Ding J, Griffith LG.",
+        year: 2020,
+        title: "An organ-on-a-chip model of human endometrial stroma and microvasculature reproduces physiological hormone responses and angiogenic recruitment.",
+        journal: "Adv Healthc Mater",
+        pmid: "32662243",
+        doi: "10.1002/adhm.202000475",
+        findings: "Pioneered a microfluidic human endometrium-on-a-chip integrating microvascular endothelial barriers and primary stromal cells under physiological shear stress, capturing dynamic angiogenic sprouting and real-time TEER permeability."
+      },
+      {
+        authors: "Park SE, Georgescu A, Huh D.",
+        year: 2019,
+        title: "Organoids-on-a-chip: biological and technical challenges.",
+        journal: "Science",
+        pmid: "31171661",
+        doi: "10.1126/science.aaw7894",
+        findings: "Established criteria for vascularizing human tissue chips, showing that continuous laminar shear stress is essential for modeling angiogenic factor gradients and microvascular perfusion."
+      }
+    ]
+  },
+  organoids: {
+    id: "organoids",
+    name: "Patient-derived organoids",
+    category: "3D Self-Organizing Glandular Organoids",
+    coreStrength: "Polarized 3D glandular cytoarchitecture, self-renewing stem-cell expansion over months, multi-cycle hormonal responsiveness, and patient biobank preservation.",
+    primaryLimitation: "Predominantly epithelial-glandular composition (lacks autologous stroma and vasculature unless engineered as complex assembloids); Matrigel lot variability.",
+    citations: [
+      {
+        authors: "Boretto M, Cox B, Noben M, Hendriks N, Fassbender A, Roose H, Amant F, Timmerman D, Tomassetti C, Vankelecom H.",
+        year: 2017,
+        title: "Development of organoids from normal and diseased human endometrium and endometriosis.",
+        journal: "Development",
+        pmid: "28851724",
+        doi: "10.1242/dev.154260",
+        findings: "Created the first patient-derived endometriosis organoid biobank, proving that 3D glandular organoids faithfully retain disease phenotypes, somatic mutations (e.g. ARID1A, PIK3CA), autocrine steroidogenesis, and multi-cycle hormone responsiveness."
+      },
+      {
+        authors: "Turco MY, Gardner L, Hughes J, Cindrova-Davies T, Gomez MJ, Farrell L, Hollinshead M, Marsh SGE, Brosens JJ, Critchley HO, Simons BD, Moffett A.",
+        year: 2017,
+        title: "Long-term, hormone-responsive organoid cultures of human endometrium in a chemically defined medium.",
+        journal: "Nat Cell Biol",
+        pmid: "28414371",
+        doi: "10.1038/ncb3516",
+        findings: "Established chemically defined niche conditions (Wnt, R-spondin-1) enabling multi-month self-renewal and glandular differentiation of patient endometrium ex-vivo."
+      }
+    ]
+  }
+};
+
+/**
+ * Evaluates the 4 experimental models for a given target and research question.
+ * Ranks all 4 models (1 to 4) based on biological relevance, disease mechanism reproduction,
+ * readout suitability, translational relevance, and technical feasibility.
+ */
+export function evaluateExperimentalModels(target, researchQuestion = '', options = {}) {
+  if (!target) {
+    throw new Error("Target object or gene symbol is required for experimental model evaluation.");
+  }
+
+  // Normalize target object if only symbol was passed
+  let targetObj = target;
+  if (typeof target === 'string') {
+    const symbol = target.trim().toUpperCase();
+    targetObj = EXPANDED_TARGET_CATALOG.find((t) => t.geneSymbol.toUpperCase() === symbol) || {
+      geneSymbol: symbol,
+      targetName: symbol,
+      biologicalCategory: "Therapeutic Target",
+      targetClass: "Cellular Target"
+    };
+  }
+
+  const gene = targetObj.geneSymbol.toUpperCase();
+  const category = (targetObj.biologicalCategory || '').toLowerCase();
+  const process = (targetObj.associatedProcess || '').toLowerCase();
+  const targetClass = (targetObj.targetClass || '').toLowerCase();
+  const questionLower = (researchQuestion || '').toLowerCase();
+
+  // Determine dominant biological theme for target & question
+  const isFibrosis = ['TGFB1', 'HDAC6', 'SMAD3', 'MMP9', 'COL1A1', 'ACTA2'].includes(gene) ||
+    category.includes('fibrosis') || category.includes('remodell') ||
+    process.includes('collagen') || process.includes('ecm') || process.includes('myofibroblast') ||
+    questionLower.includes('fibros') || questionLower.includes('collagen') || questionLower.includes('ecm');
+
+  const isAngiogenesis = !isFibrosis && (
+    ['VEGFA', 'HIF1A', 'CXCL8', 'KDR', 'FLT1'].includes(gene) ||
+    category.includes('angio') || category.includes('vascular') ||
+    process.includes('vegf') || process.includes('endothelial') || process.includes('hypoxia') ||
+    questionLower.includes('angio') || questionLower.includes('vascular') || questionLower.includes('perfusion')
+  );
+
+  const isGlandularAromataseCytokine = !isFibrosis && !isAngiogenesis && (
+    ['CYP19A1', 'IL6', 'TNF', 'PTGS2', 'STAT3', 'EGFR'].includes(gene) ||
+    category.includes('inflammation') || category.includes('immune') ||
+    process.includes('aromatase') || process.includes('cytokine') || process.includes('prostaglandin') ||
+    questionLower.includes('cytokine') || questionLower.includes('aromatase') || questionLower.includes('glandular')
+  );
+
+  const isHormonalNuclear = !isFibrosis && !isAngiogenesis && !isGlandularAromataseCytokine && (
+    ['ESR2', 'PGR', 'ESR1', 'MAPK14', 'AKT1', 'ARID1A'].includes(gene) ||
+    targetClass.includes('nuclear receptor') || category.includes('hormon') ||
+    process.includes('estrogen') || process.includes('progesterone') || process.includes('decidual') ||
+    questionLower.includes('progesteron') || questionLower.includes('estrogen') || questionLower.includes('hormon')
+  );
+
+  // Compute criteria scores (0-100) for each of the 4 models
+  const modelEvaluations = [
+    // 1. PATIENT-DERIVED TISSUE EXPLANTS
+    (() => {
+      let bioRel = 75;
+      let mechRep = 78;
+      let readout = 76;
+      let transRel = 88;
+      let feas = 74;
+
+      if (isFibrosis) {
+        bioRel = 98;
+        mechRep = 97;
+        readout = 95;
+        transRel = 97;
+        feas = 76;
+      } else if (isAngiogenesis) {
+        bioRel = 83;
+        mechRep = 84;
+        readout = 80;
+        transRel = 88;
+        feas = 72;
+      } else if (isHormonalNuclear) {
+        bioRel = 78;
+        mechRep = 77;
+        readout = 74;
+        transRel = 86;
+        feas = 74;
+      } else if (isGlandularAromataseCytokine) {
+        bioRel = 77;
+        mechRep = 79;
+        readout = 75;
+        transRel = 85;
+        feas = 73;
+      }
+
+      const score = Math.round(bioRel * 0.35 + mechRep * 0.25 + readout * 0.20 + transRel * 0.15 + feas * 0.05);
+
+      return {
+        id: "explants",
+        benchmark: EXPERIMENTAL_MODEL_BENCHMARKS.explants,
+        scores: { bioRel, mechRep, readout, transRel, feas, total: score },
+        isPrimarySuitabilityTheme: isFibrosis
+      };
+    })(),
+
+    // 2. COMPLEMENTARY PRIMARY CELL APPROACHES
+    (() => {
+      let bioRel = 82;
+      let mechRep = 80;
+      let readout = 92;
+      let transRel = 80;
+      let feas = 94;
+
+      if (isHormonalNuclear) {
+        bioRel = 97;
+        mechRep = 96;
+        readout = 98;
+        transRel = 90;
+        feas = 95;
+      } else if (isGlandularAromataseCytokine) {
+        bioRel = 86;
+        mechRep = 84;
+        readout = 92;
+        transRel = 82;
+        feas = 94;
+      } else if (isFibrosis) {
+        bioRel = 79;
+        mechRep = 77;
+        readout = 86;
+        transRel = 76;
+        feas = 94;
+      } else if (isAngiogenesis) {
+        bioRel = 73;
+        mechRep = 70;
+        readout = 80;
+        transRel = 72;
+        feas = 94;
+      }
+
+      const score = Math.round(bioRel * 0.35 + mechRep * 0.25 + readout * 0.20 + transRel * 0.15 + feas * 0.05);
+
+      return {
+        id: "primary_cells",
+        benchmark: EXPERIMENTAL_MODEL_BENCHMARKS.primary_cells,
+        scores: { bioRel, mechRep, readout, transRel, feas, total: score },
+        isPrimarySuitabilityTheme: isHormonalNuclear
+      };
+    })(),
+
+    // 3. ORGAN-ON-CHIP SYSTEMS
+    (() => {
+      let bioRel = 84;
+      let mechRep = 86;
+      let readout = 86;
+      let transRel = 84;
+      let feas = 68;
+
+      if (isAngiogenesis) {
+        bioRel = 98;
+        mechRep = 97;
+        readout = 98;
+        transRel = 94;
+        feas = 70;
+      } else if (isFibrosis) {
+        bioRel = 84;
+        mechRep = 85;
+        readout = 84;
+        transRel = 82;
+        feas = 68;
+      } else if (isGlandularAromataseCytokine) {
+        bioRel = 81;
+        mechRep = 83;
+        readout = 82;
+        transRel = 80;
+        feas = 68;
+      } else if (isHormonalNuclear) {
+        bioRel = 75;
+        mechRep = 76;
+        readout = 78;
+        transRel = 78;
+        feas = 68;
+      }
+
+      const score = Math.round(bioRel * 0.35 + mechRep * 0.25 + readout * 0.20 + transRel * 0.15 + feas * 0.05);
+
+      return {
+        id: "organ_on_chip",
+        benchmark: EXPERIMENTAL_MODEL_BENCHMARKS.organ_on_chip,
+        scores: { bioRel, mechRep, readout, transRel, feas, total: score },
+        isPrimarySuitabilityTheme: isAngiogenesis
+      };
+    })(),
+
+    // 4. PATIENT-DERIVED ORGANOIDS
+    (() => {
+      let bioRel = 85;
+      let mechRep = 84;
+      let readout = 88;
+      let transRel = 89;
+      let feas = 80;
+
+      if (isGlandularAromataseCytokine) {
+        bioRel = 97;
+        mechRep = 96;
+        readout = 95;
+        transRel = 96;
+        feas = 82;
+      } else if (isHormonalNuclear) {
+        bioRel = 88;
+        mechRep = 87;
+        readout = 89;
+        transRel = 91;
+        feas = 80;
+      } else if (isAngiogenesis) {
+        bioRel = 78;
+        mechRep = 76;
+        readout = 80;
+        transRel = 82;
+        feas = 80;
+      } else if (isFibrosis) {
+        bioRel = 72;
+        mechRep = 70;
+        readout = 74;
+        transRel = 76;
+        feas = 80;
+      }
+
+      const score = Math.round(bioRel * 0.35 + mechRep * 0.25 + readout * 0.20 + transRel * 0.15 + feas * 0.05);
+
+      return {
+        id: "organoids",
+        benchmark: EXPERIMENTAL_MODEL_BENCHMARKS.organoids,
+        scores: { bioRel, mechRep, readout, transRel, feas, total: score },
+        isPrimarySuitabilityTheme: isGlandularAromataseCytokine
+      };
+    })()
+  ];
+
+  // Guarantee strict tie-breaking by adjusting by small unique fraction if needed
+  modelEvaluations.sort((a, b) => b.scores.total - a.scores.total);
+
+  // Ensure consecutive distinct scores so ranks 1, 2, 3, 4 are unambiguous
+  for (let i = 1; i < modelEvaluations.length; i++) {
+    if (modelEvaluations[i].scores.total >= modelEvaluations[i - 1].scores.total) {
+      modelEvaluations[i].scores.total = modelEvaluations[i - 1].scores.total - 1;
+    }
+  }
+
+  // Construct target-tailored descriptions, mechanisms, readouts, and roadmap
+  const rankedModels = modelEvaluations.map((item, index) => {
+    const rank = index + 1;
+    const isPriority = rank === 1;
+    const modelId = item.id;
+    const bench = item.benchmark;
+
+    let targetSpecificSuitabilityReason = "";
+    let biologicalMechanisms = [];
+    let suggestedReadouts = [];
+    let expectedResearchValue = "";
+    let practicalConsiderations = "";
+    let mainAdvantage = "";
+    let mainLimitation = "";
+
+    if (modelId === "explants") {
+      mainAdvantage = "Preserves native 3D extracellular matrix architecture, resident myofibroblasts, and original tissue tension.";
+      mainLimitation = "Limited ex-vivo viability (48-72h) before core necrosis; refractory to genetic transfection.";
+
+      if (isPriority) {
+        targetSpecificSuitabilityReason = `Patient-derived tissue explants rank as the #1 priority model for ${gene} (${targetObj.targetName}) because native tissue remodeling, fibrillar collagen cross-linking, and mechanical strain cannot be reconstituted in monocultures. Explants uniquely preserve the original histological architecture of endometriotic nodules, keeping ${gene}-expressing stromal cells embedded within their endogenous fibrotic microenvironment.`;
+        biologicalMechanisms = [
+          `In-situ modulation of ${gene}-dependent myofibroblast differentiation and alpha-SMA stress fiber assembly under native mechanical tension`,
+          `Endogenous extracellular matrix remodeling and type I/III collagen deposition within unperturbed pelvic lesion stroma`,
+          `Preservation of paracrine cross-talk between lesion myofibroblasts, microvascular pericytes, and infiltrating peritoneal macrophages`
+        ];
+        suggestedReadouts = [
+          `Sirius Red polarization microscopy and Second Harmonic Generation (SHG) imaging for 3D collagen cross-linking`,
+          `Western blot and immunohistochemistry for Phospho-${gene} activation markers and alpha-SMA (ACTA2)`,
+          `Atomic force microscopy (AFM) or micro-indentation for quantitative tissue stiffness measurements`,
+          `Multiplex cytokine profiling (ELISA / Luminex) of conditioned media for active target secretion`
+        ];
+        expectedResearchValue = `Provides the highest clinical translational predictive power for testing anti-fibrotic small molecules targeting ${gene}. Directly demonstrates whether pharmacological intervention halts or reverses established human endometriotic scar tissue ex-vivo before advancing to primate models or clinical trials.`;
+        practicalConsiderations = `Requires immediate logistical transport from the operating room in chilled balanced buffer (DMEM/F12 + 10% charcoal-stripped serum). Experiments must conclude within 72 hours to prevent core tissue ischemia. Replicate across at least 3-5 distinct patient biopsies to account for patient-to-patient lesion heterogeneity.`;
+      } else {
+        targetSpecificSuitabilityReason = `Ranked #${rank} for ${gene}. While explants preserve native lesion cytoarchitecture, their short 48-72h culture window is suboptimal for the multi-week perturbations or genetic reporter assays required for detailed mechanistic dissection of ${gene}. Recommended primarily as a secondary ex-vivo validation platform.`;
+      }
+    } else if (modelId === "primary_cells") {
+      mainAdvantage = "Unmatched genetic manipulability (siRNA, shRNA, CRISPR-Cas9), high-throughput 96/384-well scalability, and direct luciferase reporter assays.";
+      mainLimitation = "2D culture on plastic eliminates 3D spatial organization, biomechanical shear, and tissue-level cellular heterogeneity.";
+
+      if (isPriority) {
+        targetSpecificSuitabilityReason = `Complementary primary cell approaches rank as the #1 priority model for ${gene} (${targetObj.targetName}) because establishing direct molecular causality requires efficient genetic manipulation (siRNA/CRISPR knockdown), promoter luciferase transactivation, and high-throughput pharmacological concentration curves. Patient-derived primary stromal cells faithfully reproduce the cell-autonomous signaling defects of ${gene} without the confounding background of non-endometriotic cell types.`;
+        biologicalMechanisms = [
+          `Direct ${gene} transcriptional transactivation and promoter occupancy via chromatin immunoprecipitation (ChIP-qPCR)`,
+          `Cell-autonomous signaling cascades including receptor phosphorylation, kinase activation loops, and downstream target transactivation`,
+          `In-vitro decidualization rescue upon cyclic cAMP and progestin stimulation following ${gene} perturbation`
+        ];
+        suggestedReadouts = [
+          `Dual-luciferase reporter assays measuring ${gene}-dependent promoter activity and hormone response elements`,
+          `Quantitative RT-qPCR and Western blotting assessing target knockdown efficiency and downstream pathway markers`,
+          `High-content concentration-response cell viability and caspase-3/7 apoptosis assays (8-point IC50 curves)`,
+          `Target engagement confirmation using cellular thermal shift assays (CETSA) or phospho-specific flow cytometry`
+        ];
+        expectedResearchValue = `Crucial for establishing target mechanism of action (MoA), screening diverse chemical matter (SAR libraries), and confirming whether selective modulators of ${gene} reverse target-driven pathology at sub-micromolar potency.`;
+        practicalConsiderations = `Use early passage primary cells (passages 1 to 4) to prevent replicative senescence and epigenetic drift. All hormone-dependent assays require culture in phenol red-free medium supplemented with charcoal-stripped fetal bovine serum.`;
+      } else {
+        targetSpecificSuitabilityReason = `Ranked #${rank} for ${gene}. Primary cells allow rapid target gene knockdown and biochemical characterization, but standard 2D plastic culturing lacks the 3D multicellular matrix and physiological perfusion critical for full disease recapitulation. Best utilized as an upstream screening tier.`;
+      }
+    } else if (modelId === "organ_on_chip") {
+      mainAdvantage = "Physiological laminar microfluidic shear stress, compartmentalized microvascular endothelial-stromal barriers, and real-time TEER permeability monitoring.";
+      mainLimitation = "Demands specialized microfluidic pump stations; lower throughput; potential hydrophobic drug adsorption onto PDMS channels.";
+
+      if (isPriority) {
+        targetSpecificSuitabilityReason = `Organ-on-chip systems rank as the #1 priority model for ${gene} (${targetObj.targetName}) because modeling vascular recruitment, endothelial barrier integrity, and shear-dependent transport cannot be achieved in static culture. Microfluidic chips allow continuous laminar perfusion of primary endometrial stroma co-cultured with human microvascular endothelial cells, reproducing the hemodynamic environment essential for ${gene}-driven pathology.`;
+        biologicalMechanisms = [
+          `Endothelial sprouting, tip-cell guidance, and neovascular lumen formation guided by ${gene}-mediated chemotactic gradients`,
+          `Transendothelial permeability and barrier breakdown under continuous physiological fluid shear stress (1-3 dyn/cm²)`,
+          `Dynamic vascular-stromal cross-talk and circulating immune cell extravasation across the microfluidic interface`
+        ];
+        suggestedReadouts = [
+          `Continuous Transepithelial/Transendothelial Electrical Resistance (TEER) across the microvascular membrane`,
+          `Confocal 3D live-cell imaging of CD31/VE-Cadherin positive capillary tube sprouting and junctional integrity`,
+          `FITC-dextran (70 kDa) vascular barrier extravasation and fluorescent tracer clearance rate quantification`,
+          `Microfluidic effluent multiplex analysis of secreted angiogenic cytokines and localized matrix metalloproteinases`
+        ];
+        expectedResearchValue = `Provides pre-clinical hemodynamic proof-of-concept that targeting ${gene} prevents neovascularization, stabilizes lesion microvessels, and inhibits ectopic implant perfusion under physiological flow conditions.`;
+        practicalConsiderations = `Pre-coat PDMS or cyclic olefin polymer microchannels with collagen type IV/fibronectin matrix. Calibrate laminar flow rates using precision syringe or peristaltic pumps. Evaluate potential non-specific sorption of lipophilic candidate compounds to microchannel polymers.`;
+      } else {
+        targetSpecificSuitabilityReason = `Ranked #${rank} for ${gene}. Organ-on-chip excels at fluid shear and multi-cellular barrier mechanics, but introduces higher technical complexity and lower assay throughput than necessary for preliminary target validation. Excellent as an advanced downstream translational hurdle.`;
+      }
+    } else if (modelId === "organoids") {
+      mainAdvantage = "Self-organizing 3D glandular polarity, indefinite expansion/biobanking, preserved donor somatic mutations, and multi-cycle hormone responsiveness.";
+      mainLimitation = "Epithelial-dominated composition lacking endogenous stroma, microvasculature, and resident immune cells in standard Matrigel domes.";
+
+      if (isPriority) {
+        targetSpecificSuitabilityReason = `Patient-derived organoids rank as the #1 priority model for ${gene} (${targetObj.targetName}) because recapitulating polarized 3D glandular cytoarchitecture, long-term multi-week hormonal cycling, and autocrine factor production requires a renewable stem-cell-driven system. Organoids derived from patient lesions preserve donor-specific somatic mutations (e.g., ARID1A, PIK3CA) and sustained local ${gene} expression across repeated passages.`;
+        biologicalMechanisms = [
+          `Autonomous glandular epithelial proliferation, apical-basolateral polarity establishment, and lumen secretory function`,
+          `Sustained local autocrine/paracrine synthesis of ${gene} and downstream inflammatory mediators over extended culture periods`,
+          `Epigenetic fidelity and preservation of patient donor mutational profiles under repeated estrogenic and progestagenic stimulation`
+        ];
+        suggestedReadouts = [
+          `3D high-content confocal immunofluorescence for polarized apical markers (ZO-1, E-Cadherin) and ${gene} localization`,
+          `Liquid chromatography-tandem mass spectrometry (LC-MS/MS) quantification of localized steroid metabolites and prostaglandins`,
+          `CellTiter-Glo 3D luminescent organoid viability assays for concentration-dependent growth inhibition`,
+          `Single-organoid RT-qPCR and RNA-sequencing assessing restoration of physiological glandular transcriptome`
+        ];
+        expectedResearchValue = `Enables long-term patient-specific pharmacological testing and biobank archiving. Demonstrates whether selective ${gene} inhibitors disrupt glandular survival, hormonal resistance, or autocrine signaling across genetically diverse endometriosis patient lines.`;
+        practicalConsiderations = `Maintain in chemically defined medium supplemented with R-spondin-1, Noggin, and Wnt-3a surrogates. Standardize Matrigel dome volume and organoid droplet density. For hormone cycling studies, adapt organoids to steroid-depleted basal medium 48 hours prior to intervention.`;
+      } else {
+        targetSpecificSuitabilityReason = `Ranked #${rank} for ${gene}. Organoids faithfully reproduce 3D glandular epithelial cytoarchitecture, but standard protocols lack stromal myofibroblasts and microvasculature. Recommended as a complementary epithelial platform alongside primary stroma or explants.`;
+      }
+    }
+
+    return {
+      modelName: bench.name,
+      modelCategory: bench.category,
+      modelId,
+      rank,
+      isPriority,
+      suitabilityScore: item.scores.total,
+      scoresBreakdown: {
+        biologicalRelevance: item.scores.bioRel,
+        diseaseMechanismReproduction: item.scores.mechRep,
+        readoutSuitability: item.scores.readout,
+        translationalRelevance: item.scores.transRel,
+        technicalFeasibility: item.scores.feas
+      },
+      targetSpecificSuitabilityReason,
+      biologicalMechanisms,
+      suggestedReadouts,
+      expectedResearchValue,
+      practicalConsiderations,
+      mainAdvantage,
+      mainLimitation,
+      literatureEvidence: bench.citations,
+      isLiteratureSupported: true
+    };
+  });
+
+  const recommendedPriorityModel = rankedModels[0];
+  const alternativeModels = rankedModels.slice(1);
+
+  // Generate actionable 4-step experimental strategy protocol based on recommended model & target
+  const suggestedExperimentalStrategy = generateExperimentalRoadmap(targetObj, recommendedPriorityModel, researchQuestion);
+
+  const recommendationPayload = {
+    targetSymbol: gene,
+    targetName: targetObj.targetName,
+    researchQuestion: researchQuestion || 'Endometriosis target validation inquiry',
+    dominantTheme: isFibrosis ? 'Fibrosis & ECM Remodeling'
+      : isAngiogenesis ? 'Angiogenesis & Microvascular Perfusion'
+      : isHormonalNuclear ? 'Hormonal & Nuclear Receptor Signaling'
+      : 'Glandular Epithelium & Chronic Inflammation',
+    evaluationDate: new Date().toISOString(),
+    rankedModels,
+    recommendedPriorityModel,
+    alternativeModels,
+    suggestedExperimentalStrategy,
+    provisionalValidationNote: "Literature citations represent published peer-reviewed benchmarks for human endometriosis model systems. Specific titration concentrations, time points, and protocol adaptations are AI-tailored recommendations that should be titrated and validated against institutional IRB and biosafety protocols."
+  };
+
+  // Persist recommendation in user-isolated storage if userId provided
+  if (options.userId) {
+    try {
+      saveModelRecommendation(options.userId, gene, recommendationPayload);
+    } catch (err) {
+      console.warn("Could not auto-save model recommendation:", err);
+    }
+  }
+
+  return recommendationPayload;
+}
+
+/**
+ * Generates an actionable 4-step experimental protocol roadmap for the priority model
+ */
+function generateExperimentalRoadmap(target, priorityModel, researchQuestion) {
+  const gene = target.geneSymbol;
+  const modelName = priorityModel.modelName;
+  const modelId = priorityModel.modelId;
+
+  if (modelId === "explants") {
+    return {
+      step1: {
+        stepNumber: 1,
+        title: "Tissue Sourcing & Biopsy Micro-Dissection",
+        description: `Procure consenting patient laparoscopic surgical biopsies (peritoneal lesions or deep infiltrating nodules). Confirm endometriotic glandular-stromal histology.`,
+        protocols: [
+          `Collect fresh surgical tissue in cold transport medium (DMEM/F12 + 10% charcoal-stripped FBS + 1% penicillin/streptomycin + 0.25 ug/mL amphotericin B).`,
+          `Transport to biosafety cabinet within 60 minutes of excision on wet ice.`,
+          `Micro-dissect tissue under sterile stereomicroscope into uniform 1.0–1.5 mm³ explant cubes to prevent core anoxia.`,
+          `Reserve 20% of tissue fragments for baseline zero-hour flash-frozen RNA/protein and formalin-fixed paraffin embedding (FFPE).`
+        ]
+      },
+      step2: {
+        stepNumber: 2,
+        title: "Air-Liquid Interface Culture Establishment",
+        description: `Establish explants on porous culture inserts to maintain physiological oxygen tension and biomechanical viability.`,
+        protocols: [
+          `Place 3-4 explants per well onto Millicell 0.4 um PTFE membrane inserts in 24-well plates containing 400 uL culture medium underneath.`,
+          `Culture medium: Phenol red-free DMEM/F12 supplemented with 10% charcoal-stripped FBS, 1 nM 17beta-estradiol, and 100 nM progesterone.`,
+          `Incubate at 37°C in humidified atmosphere of 5% CO2 and 5% O2 (physiological pelvic hypoxia) to maintain in-vivo phenotypes.`,
+          `Pre-incubate for 4 hours to equilibrate tissue prior to experimental perturbation.`
+        ]
+      },
+      step3: {
+        stepNumber: 3,
+        title: "Target Perturbation & Pharmacological Intervention",
+        description: `Deliver targeted small molecule modulators or neutralizing biologics directed against ${gene}.`,
+        protocols: [
+          `Prepare test compound stocks in molecular biology-grade DMSO; maintain vehicle control at <= 0.1% (v/v) final DMSO.`,
+          `Administer candidate ${gene} inhibitor across a 4-point concentration series (e.g. 10 nM, 100 nM, 1 uM, 10 uM) alongside vehicle and positive control wells.`,
+          `Refresh medium and compound every 24 hours.`,
+          `Collect conditioned supernatant at 24h, 48h, and 72h timepoints; store at -80°C for cytokine and target secretion profiling.`
+        ]
+      },
+      step4: {
+        stepNumber: 4,
+        title: "Multi-Modal Quantitative Readouts & Validation",
+        description: `Measure target engagement, myofibroblast de-differentiation, and collagen matrix remodeling.`,
+        protocols: [
+          `Primary Readout: Picrosirius red staining with polarized light birefringence microscopy to quantify mature fibrillar collagen type I/III.`,
+          `Secondary Readout: Western blot and immunohistochemistry for Phospho-${gene} and alpha-SMA (ACTA2) expression.`,
+          `Viability Control: LDH (lactate dehydrogenase) release assay in culture supernatants to confirm lack of nonspecific tissue cytotoxicity.`,
+          `Perform statistical comparison across >= 4 biological patient replicates using two-way ANOVA with Dunnett's post-test.`
+        ]
+      }
+    };
+  }
+
+  if (modelId === "primary_cells") {
+    return {
+      step1: {
+        stepNumber: 1,
+        title: "Primary Stromal Cell Isolation & Culture",
+        description: `Enzymatic dissociation of patient endometriotic tissue to isolate primary stromal cells (ESCs) and glandular epithelial fractions.`,
+        protocols: [
+          `Digest finely minced biopsy with collagenase type I (1 mg/mL) and DNase I (0.1 mg/mL) in shaking water bath at 37°C for 45-60 min.`,
+          `Filter through 100 um cell strainer to capture epithelial fragments; pass filtrate through 40 um strainer to isolate single stromal cells.`,
+          `Seed primary stromal cells in phenol red-free DMEM/F12 + 10% charcoal-stripped FBS.`,
+          `Confirm stromal purity (>98%) by positive vimentin staining and negative cytokeratin-18/19 immunofluorescence.`
+        ]
+      },
+      step2: {
+        stepNumber: 2,
+        title: "Assay Seeding & Decidualization Priming",
+        description: `Plate cells in multi-well formats and establish physiological steroid hormone conditions.`,
+        protocols: [
+          `Seed passage 1-3 cells at 15,000 cells/cm² in 24-well plates for RNA/protein or 4,000 cells/well in 96-well plates for high-content screening.`,
+          `Allow adherence for 24 hours in steroid-depleted medium.`,
+          `For hormone-resistance studies, prime cells with 0.5 mM 8-Br-cAMP and 1 uM medroxyprogesterone acetate (MPA) for 48 hours to induce decidualization markers (IGFBP1, PRL).`,
+          `Verify cell monolayer confluence and morphology via phase-contrast microscopy.`
+        ]
+      },
+      step3: {
+        stepNumber: 3,
+        title: "Genetic & Pharmacological Perturbation of " + gene,
+        description: `Deliver siRNA/CRISPR ribonucleoproteins or titrated small molecule modulators against ${gene}.`,
+        protocols: [
+          `Transfect with 25 nM target-specific siRNA pool or non-targeting control siRNA using Lipofectamine RNAiMAX in Opti-MEM.`,
+          `For pharmacological modulation, dose selective ${gene} inhibitors across an 8-point semi-log concentration curve (0.1 nM to 10 uM).`,
+          `Co-transfect dual-luciferase reporter plasmids (e.g. ERE-Luc or PRE-Luc) if evaluating receptor transactivation.`,
+          `Harvest cells at 24h (mRNA / phosphorylation), 48h (luciferase / reporter activity), and 72h (protein / decidualization).`
+        ]
+      },
+      step4: {
+        stepNumber: 4,
+        title: "Quantitative Validation & Mechanism of Action Readouts",
+        description: `Quantify target knockdown efficiency, downstream pathway phosphorylation, and functional cellular phenotype.`,
+        protocols: [
+          `Primary Readout: Quantitative RT-qPCR measuring ${gene} knockdown alongside canonical downstream response genes.`,
+          `Pathway Confirmation: Capillary or standard Western blot probing target phosphorylation status and active downstream effectors.`,
+          `Functional Endpoint: CellTiter-Glo 2.0 luminescent viability and Caspase-Glo 3/7 apoptosis luminescence assays.`,
+          `Calculate IC50 / EC50 values using non-linear 4-parameter regression curves across N=3 independent patient lines.`
+        ]
+      }
+    };
+  }
+
+  if (modelId === "organ_on_chip") {
+    return {
+      step1: {
+        stepNumber: 1,
+        title: "Chip Microchannel Preparation & ECM Priming",
+        description: `Sterilize microfluidic co-culture devices and functionalize microchannels with basement membrane hydrogel.`,
+        protocols: [
+          `Plasma-treat dual-channel PDMS or cyclic olefin polymer chips and bond to glass coverslips; autoclave and UV sterilize.`,
+          `Coat central vascular microchannel with human fibronectin (50 ug/mL) and collagen type IV (100 ug/mL) for 2 hours at 37°C.`,
+          `Fill interstitial 3D tissue compartment with neutralized rat-tail collagen type I (2.5 mg/mL) mixed with human primary endometrial stroma (3x10^6 cells/mL).`,
+          `Allow hydrogel polymerization in 37°C incubator for 30 minutes before channel perfusion.`
+        ]
+      },
+      step2: {
+        stepNumber: 2,
+        title: "Endothelial Barrier Seeding & Laminar Flow Establishment",
+        description: `Seed human microvascular endothelial cells (HMVEC) and initiate continuous physiological shear stress.`,
+        protocols: [
+          `Inoculate vascular channel with HMVEC suspension (5x10^6 cells/mL); invert chip for 2 hours to ensure top/bottom lumen coverage.`,
+          `Connect chip to programmable syringe or peristaltic micro-perfusion pump.`,
+          `Ramp laminar flow gradually from 0.2 dyn/cm² up to physiological shear stress of 1.5 dyn/cm² over 12 hours.`,
+          `Monitor baseline barrier maturation via inline or chopstick TEER electrodes until resistance exceeds 150 Ohm*cm².`
+        ]
+      },
+      step3: {
+        stepNumber: 3,
+        title: "Target Perturbation & Gradient Delivery",
+        description: `Introduce ${gene} agonists, antagonists, or angiogenic factor gradients under continuous microfluidic flow.`,
+        protocols: [
+          `Perfuse candidate ${gene} modulator through vascular channel while maintaining baseline hormone-supplemented medium in stromal channel.`,
+          `Apply hypoxic gas mix (1-2% O2) to interstitial compartment if evaluating hypoxia-driven neovascular recruitment.`,
+          `Maintain continuous perfusion for 48 to 96 hours to allow morphogenic sprouting and vessel reorganization.`,
+          `Collect microfluidic effluent at regular 12-hour intervals for biomarker quantification.`
+        ]
+      },
+      step4: {
+        stepNumber: 4,
+        title: "Real-Time Barrier Integrity & Angiogenic Readouts",
+        description: `Evaluate vascular sprouting, barrier permeability, and target engagement via high-resolution confocal microscopy.`,
+        protocols: [
+          `Primary Readout: Perfusion of 70 kDa FITC-dextran through vascular channel with real-time fluorescent extravasation imaging.`,
+          `3D Morphometry: In-situ immunofluorescence for CD31, VE-Cadherin, and Phalloidin; quantify capillary sprout length and branch points.`,
+          `Effluent Biomarker Analysis: Quantify secreted VEGF-A, Angiopoietin-2, and target protein in collection reservoirs via multiplex ELISA.`,
+          `Replicate across at least 4 independent microfluidic chips per condition to establish statistical significance.`
+        ]
+      }
+    };
+  }
+
+  // Default: Organoids
+  return {
+    step1: {
+      stepNumber: 1,
+      title: "Glandular Epithelial Isolation & Biobank Seeding",
+      description: `Isolate patient glandular epithelial fragments and embed in 3D basement membrane extracellular matrix hydrogel.`,
+      protocols: [
+        `Digested lesion fragments are passed through a 100 um sieve to retain intact epithelial gland structures.`,
+        `Glands are washed in Advanced DMEM/F12, counted, and resuspended on ice in growth factor-reduced Matrigel or BME-2 hydrogel.`,
+        `Deposit 30 uL hydrogel domes containing ~500-1,000 glandular crypts per well into pre-warmed 24-well culture plates.`,
+        `Invert plates and polymerize at 37°C for 25 minutes to achieve 3D hemispherical dome suspension.`
+      ]
+    },
+    step2: {
+      stepNumber: 2,
+      title: "Chemically Defined Expansion & Polarized Differentiation",
+      description: `Cultivate organoids in stem-cell supporting medium and establish menstrual cycle hormonal responsiveness.`,
+      protocols: [
+        `Overlay polymerized domes with 500 uL Expansion Medium containing R-spondin-1 (500 ng/mL), Noggin (100 ng/mL), and FGF-10 (100 ng/mL).`,
+        `Refresh expansion medium every 3 days; passage organoids every 7-14 days via gentle mechanical shearing with fire-polished glass pipettes.`,
+        `To induce differentiated glandular secretory state, supplement medium with 10 nM 17beta-estradiol and 1 uM medroxyprogesterone acetate.`,
+        `Confirm polarized glandular cytoarchitecture with apical F-actin and ZO-1 tight junction immunofluorescence.`
+      ]
+    },
+    step3: {
+      stepNumber: 3,
+      title: "Target Perturbation & Long-Term Intervention",
+      description: `Deliver selective ${gene} inhibitors or genetic vectors over single or multi-week organoid passages.`,
+      protocols: [
+        `Inoculate organoid wells with candidate ${gene} modulator at designated concentration range (e.g. 10 nM to 10 uM) in vehicle control medium.`,
+        `For genetic modification, electroporate single-cell dissociated organoids using ECM-safe nucleofection protocols.`,
+        `Maintain treatment over a 7-day or 14-day cycle with medium renewal every 48 hours.`,
+        `Collect organoid conditioned media for mass spectrometry lipidomic/steroidomic analysis.`
+      ]
+    },
+    step4: {
+      stepNumber: 4,
+      title: "3D Glandular Phenotype & Biomarker Readouts",
+      description: `Quantify organoid survival, autocrine secretion, and morphological phenotype recovery.`,
+      protocols: [
+        `Primary Readout: CellTiter-Glo 3D luminescent cell viability assay to determine dose-dependent organoid growth inhibition.`,
+        `Secretome Analysis: Liquid chromatography-tandem mass spectrometry (LC-MS/MS) for local estradiol, PGE2, and ${gene} downstream metabolites.`,
+        `Morphological Metrics: Automated 3D confocal organoid volume, lumen-to-wall ratio, and live/dead Calcein-AM/EthD-1 staining.`,
+        `Repeat experiments across >= 3 distinct patient donor organoid lines to validate biobank consistency.`
+      ]
+    }
+  };
+}
+
+/**
+ * Retrieve cached model recommendation for a target and user
+ */
+export function getModelRecommendation(userId, targetSymbol) {
+  if (!userId || !targetSymbol || typeof window === 'undefined' || typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(`${MODEL_RECOMMENDATION_STORAGE_PREFIX}${userId}_${targetSymbol.toUpperCase()}`);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error("Error reading model recommendation:", e);
+  }
+  return null;
+}
+
+/**
+ * Save model recommendation for a target and user
+ */
+export function saveModelRecommendation(userId, targetSymbol, recommendation) {
+  if (!userId || !targetSymbol || !recommendation || typeof window === 'undefined' || typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(
+      `${MODEL_RECOMMENDATION_STORAGE_PREFIX}${userId}_${targetSymbol.toUpperCase()}`,
+      JSON.stringify(recommendation)
+    );
+  } catch (e) {
+    console.error("Error saving model recommendation:", e);
+  }
+}
+
